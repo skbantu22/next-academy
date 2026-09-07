@@ -28,6 +28,9 @@ export default function AuthPage({ mode = "login" }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [verification, setVerification] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [resendSeconds, setResendSeconds] = useState(0);
   const [resetMode, setResetMode] = useState(false);
 
   useEffect(() => {
@@ -35,6 +38,27 @@ export default function AuthPage({ mode = "login" }) {
       router.replace(`/dashboard/${auth.profile.role.toLowerCase()}`);
     }
   }, [auth.loading, auth.profile?.role, auth.user, router]);
+
+  useEffect(() => {
+    if (!resendSeconds) return undefined;
+    const timer = window.setInterval(() => {
+      setResendSeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendSeconds]);
+
+  async function sendVerificationCode() {
+    const result = await auth.sendVerificationCode();
+    setResendSeconds(result.retryAfterSeconds || 60);
+    setNotice("A 6-digit verification code has been sent to your email.");
+  }
+
+  async function openVerification(user) {
+    setVerificationEmail(user?.email || email);
+    setVerificationCode("");
+    setVerification(true);
+    await sendVerificationCode();
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -46,10 +70,11 @@ export default function AuthPage({ mode = "login" }) {
         await auth.resetPassword(email);
         setNotice("Password reset email sent. Check your inbox.");
       } else if (mode === "register") {
-        await auth.register(email, password, name);
-        setVerification(true);
+        const registeredUser = await auth.register(email, password, name);
+        await openVerification(registeredUser);
       } else {
-        await auth.login(email, password);
+        const result = await auth.login(email, password);
+        if (result.requiresVerification) await openVerification(result.user);
       }
     } catch {
       // Auth context provides the user-facing message.
@@ -74,24 +99,26 @@ export default function AuthPage({ mode = "login" }) {
     setBusy(true);
     auth.clearError();
     try {
-      await auth.resendVerificationEmail();
-      setNotice("A new verification email has been sent.");
+      await sendVerificationCode();
     } catch (verificationError) {
       setNotice(verificationError.message);
+      if (verificationError.retryAfterSeconds) {
+        setResendSeconds(verificationError.retryAfterSeconds);
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  async function checkVerification() {
+  async function verifyCode() {
     setBusy(true);
     auth.clearError();
     try {
-      const verified = await auth.refreshVerification();
-      if (!verified)
-        setNotice(
-          "Your email is not verified yet. Open the email link, then try again.",
-        );
+      await auth.verifyEmailCode(verificationCode);
+      setNotice("Your email has been verified. Redirecting to your workspace...");
+      if (auth.profile?.role) {
+        router.replace(`/dashboard/${auth.profile.role.toLowerCase()}`);
+      }
     } catch (verificationError) {
       setNotice(verificationError.message);
     } finally {
@@ -126,13 +153,27 @@ export default function AuthPage({ mode = "login" }) {
               ✉
             </span>
             <h1 className="mt-5 text-2xl font-bold text-slate-900">
-              Check your email
+              Verify your email
             </h1>
             <p className="mt-3 text-sm leading-6 text-slate-500">
-              We sent a verification link to{" "}
-              <strong className="text-slate-800">{email}</strong>. Verify your
-              email before signing in.
+              Enter the 6-digit verification code sent to{" "}
+              <strong className="text-slate-800">{verificationEmail}</strong>.
             </p>
+            <label className="mt-6 block text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
+              Verification code
+              <input
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                maxLength={6}
+                onChange={(event) =>
+                  setVerificationCode(event.target.value.replace(/\D/g, ""))
+                }
+                pattern="[0-9]{6}"
+                placeholder="000000"
+                value={verificationCode}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center font-mono text-lg font-bold tracking-[0.4em] outline-none focus:ring-2 focus:ring-red-500"
+              />
+            </label>
             {message && (
               <p
                 className={`mt-4 text-xs ${auth.error ? "text-red-600" : "text-emerald-600"}`}
@@ -141,18 +182,20 @@ export default function AuthPage({ mode = "login" }) {
               </p>
             )}
             <button
-              disabled={busy}
-              onClick={checkVerification}
+              disabled={busy || verificationCode.length !== 6}
+              onClick={verifyCode}
               className="mt-6 h-12 w-full rounded-xl bg-red-600 text-sm font-semibold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 disabled:opacity-60"
             >
-              {busy ? "Checking..." : "I have verified my email"}
+              {busy ? "Verifying..." : "Verify Email"}
             </button>
             <button
-              disabled={busy}
+              disabled={busy || resendSeconds > 0}
               onClick={resend}
-              className="mt-4 text-xs font-semibold text-red-600"
+              className="mt-4 text-xs font-semibold text-red-600 disabled:text-slate-400"
             >
-              Resend verification email
+              {resendSeconds > 0
+                ? `Resend Code (${resendSeconds}s)`
+                : "Resend Code"}
             </button>
             <p className="mt-6 text-xs text-slate-500">
               Wrong email?{" "}
