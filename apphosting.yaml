@@ -1,0 +1,24 @@
+# Firebase App Hosting runtime configuration.
+# NEXT_PUBLIC_FIREBASE_* client vars are auto-provided by App Hosting's
+# Firebase integration. The Admin SDK vars below are NOT auto-provided —
+# they must be supplied explicitly because they're server-only credentials.
+#
+# Only variables with a real configured value are listed here. If you later
+# configure email OTP (EMAIL_OTP_HASH_SECRET), QR codes (QR_TOKEN_SECRET), or
+# Resend (RESEND_API_KEY / RESEND_FROM_EMAIL) in your local .env.local, add
+# matching entries here the same way before those features will work in prod.
+env:
+  - variable: FIREBASE_ADMIN_PROJECT_ID
+    value: "mynextlerning"
+    availability:
+      - RUNTIME
+
+  - variable: FIREBASE_ADMIN_CLIENT_EMAIL
+    secret: FIREBASE_ADMIN_CLIENT_EMAIL
+    availability:
+      - RUNTIME
+
+  - variable: FIREBASE_ADMIN_PRIVATE_KEY
+    secret: FIREBASE_ADMIN_PRIVATE_KEY
+    availability:
+      - RUNTIME
