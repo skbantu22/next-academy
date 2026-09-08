@@ -18,15 +18,15 @@ import IdCardPrint from "./IdCardPrint";
 
 function Empty({ children }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+    <div className="rounded-2xl border border-dashed border-border-subtle bg-white p-8 text-center text-sm text-muted">
       {children}
     </div>
   );
 }
 function Panel({ title, children }) {
   return (
-    <section className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="mb-4 font-bold text-slate-800">{title}</h2>
+    <section className="mt-5 rounded-3xl border border-border-subtle bg-white p-5 shadow-sm">
+      <h2 className="mb-4 font-bold text-ink">{title}</h2>
       {children}
     </section>
   );
@@ -96,9 +96,9 @@ export default function TeacherStudentProfile() {
 
   return (
     <TeacherGate>
-      <main className="min-h-screen bg-slate-100 text-slate-800">
+      <main className="min-h-screen bg-page text-ink">
         <div className="mx-auto max-w-5xl p-4 md:p-8">
-          <Link href="/teacher/students" className="text-xs font-semibold text-red-600">
+          <Link href="/teacher/students" className="text-xs font-semibold text-primary">
             ← Back to students
           </Link>
           {loading ? (
@@ -115,17 +115,19 @@ export default function TeacherStudentProfile() {
             </div>
           ) : (
             <>
-              <header className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-gradient-to-r from-slate-900 to-red-950 p-6 text-white shadow-xl md:p-8">
+              <header className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-[#f3aaaa] bg-[linear-gradient(120deg,#fff0f0_0%,#fff7f7_45%,#ffffff_100%)] p-6 text-ink shadow-xl md:p-8">
                 <div>
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-red-300">Student profile</p>
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-primary">
+                    {student.studentId || "—"} · Student profile
+                  </p>
                   <h1 className="mt-3 text-2xl font-black md:text-4xl">
                     {student.displayName || "Unnamed student"}
                   </h1>
-                  <p className="mt-2 text-sm text-slate-300">{student.email}</p>
+                  <p className="mt-2 text-sm text-muted">{student.email}</p>
                 </div>
                 <button
                   onClick={() => setShowIdCard((current) => !current)}
-                  className="rounded-xl bg-white px-4 py-2 text-xs font-bold text-red-700"
+                  className="rounded-xl border border-border-subtle bg-white px-4 py-2 text-xs font-bold text-primary"
                 >
                   {showIdCard ? "Hide ID card" : "Print ID card"}
                 </button>
@@ -144,16 +146,16 @@ export default function TeacherStudentProfile() {
               )}
 
               <section className="mt-5 grid gap-4 md:grid-cols-3">
-                <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Enrollments</span>
+                <article className="rounded-2xl border border-border-subtle bg-white p-5 shadow-sm">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-subtle">Enrollments</span>
                   <strong className="mt-2 block text-3xl">{enrollments.length}</strong>
                 </article>
-                <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Attendance rate</span>
+                <article className="rounded-2xl border border-border-subtle bg-white p-5 shadow-sm">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-subtle">Attendance rate</span>
                   <strong className="mt-2 block text-3xl">{attendanceRate == null ? "—" : `${attendanceRate}%`}</strong>
                 </article>
-                <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Status</span>
+                <article className="rounded-2xl border border-border-subtle bg-white p-5 shadow-sm">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-subtle">Status</span>
                   <strong className="mt-2 block text-lg">{student.active === false ? "Inactive" : "Active"}</strong>
                 </article>
               </section>
@@ -162,9 +164,9 @@ export default function TeacherStudentProfile() {
                 {enrollments.length ? (
                   <div className="space-y-2">
                     {enrollments.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between rounded-xl bg-slate-50 p-3 text-xs">
+                      <div key={item.id} className="flex items-center justify-between rounded-xl bg-page p-3 text-xs">
                         <b>{courseTitle(item.courseId)}</b>
-                        <span className="text-slate-500">{item.status || "enrolled"}</span>
+                        <span className="text-muted">{item.status || "enrolled"}</span>
                       </div>
                     ))}
                   </div>
@@ -180,9 +182,9 @@ export default function TeacherStudentProfile() {
                       .slice()
                       .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
                       .map((item) => (
-                        <div key={item.id} className="flex items-center justify-between rounded-xl bg-slate-50 p-3 text-xs">
+                        <div key={item.id} className="flex items-center justify-between rounded-xl bg-page p-3 text-xs">
                           <span>{item.date}</span>
-                          <b className={item.status === "present" ? "text-emerald-600" : item.status === "late" ? "text-amber-600" : "text-red-600"}>
+                          <b className={item.status === "present" ? "text-success" : item.status === "late" ? "text-warning" : "text-primary"}>
                             {item.status}
                           </b>
                         </div>
@@ -197,13 +199,13 @@ export default function TeacherStudentProfile() {
                 {achievements.length || certificates.length ? (
                   <div className="space-y-2">
                     {achievements.map((item) => (
-                      <div key={item.id} className="rounded-xl bg-slate-50 p-3 text-xs">
-                        <b>{item.title}</b> <span className="text-slate-500">· Achievement</span>
+                      <div key={item.id} className="rounded-xl bg-page p-3 text-xs">
+                        <b>{item.title}</b> <span className="text-muted">· Achievement</span>
                       </div>
                     ))}
                     {certificates.map((item) => (
-                      <div key={item.id} className="rounded-xl bg-slate-50 p-3 text-xs">
-                        <b>{item.title}</b> <span className="text-slate-500">· Certificate</span>
+                      <div key={item.id} className="rounded-xl bg-page p-3 text-xs">
+                        <b>{item.title}</b> <span className="text-muted">· Certificate</span>
                       </div>
                     ))}
                   </div>

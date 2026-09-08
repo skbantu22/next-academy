@@ -10,10 +10,7 @@ import {
   createTeacherCertificate,
   createTeacherEvent,
   deleteTeacherEvent,
-  markNotificationRead,
   saveAttendance,
-  sendTeacherMessage,
-  subscribeConversationMessages,
   subscribeTeacherDashboard,
   updateTeacherEvent,
   updateTeacherProfile,
@@ -22,6 +19,9 @@ import { db } from "../lib/firebase";
 import TrainingManagement from "./training/TrainingManagement";
 import WorkspaceShell from "./dashboard/WorkspaceShell";
 import IdCardPrint from "./teacher/IdCardPrint";
+import ChatWorkspace from "./chat/ChatWorkspace";
+import { NotificationList } from "./dashboard/NotificationBell";
+import { markNotificationRead } from "../lib/notification-data";
 import { scanAttendanceQr } from "../lib/services/qr-service";
 import {
   deleteTeacherDocument,
@@ -85,16 +85,16 @@ const blank = {
 
 function Empty({ children }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+    <div className="rounded-2xl border border-dashed border-border-subtle bg-white p-8 text-center text-sm text-muted">
       {children}
     </div>
   );
 }
 function Panel({ title, children, action }) {
   return (
-    <section className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-sm md:p-6">
+    <section className="rounded-3xl border border-border-subtle/70 bg-white p-5 shadow-sm md:p-6">
       <div className="mb-5 flex items-center justify-between gap-4">
-        <h2 className="font-bold text-slate-800">{title}</h2>
+        <h2 className="font-bold text-ink">{title}</h2>
         {action}
       </div>
       {children}
@@ -103,17 +103,17 @@ function Panel({ title, children, action }) {
 }
 function Field({ label, ...props }) {
   return (
-    <label className="grid gap-1 text-xs font-semibold text-slate-600">
+    <label className="grid gap-1 text-xs font-semibold text-muted">
       {label}
       <input
         {...props}
-        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-normal outline-none focus:ring-2 focus:ring-red-500"
+        className="rounded-xl border border-border-subtle bg-page px-3 py-2.5 text-xs font-normal outline-none focus:ring-2 focus:ring-primary"
       />
     </label>
   );
 }
 
-function TeacherShell({ active, children, unread }) {
+export function TeacherShell({ active, children, unread }) {
   const { user, profile, logout } = useAuth();
   const name =
     profile?.displayName ||
@@ -129,7 +129,7 @@ function TeacherShell({ active, children, unread }) {
       getHref={(module) => paths[module]}
       renderBadge={(module) =>
         module === "Chat" && unread > 0 ? (
-          <b className="ml-auto rounded-full bg-red-400 px-1.5 py-0.5 text-[9px] text-white">
+          <b className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] text-white">
             {unread}
           </b>
         ) : null
@@ -169,14 +169,14 @@ function DashboardView({ data }) {
   ];
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl bg-gradient-to-r from-red-600 via-red-700 to-red-900 p-6 text-white shadow-xl md:p-8">
-        <span className="rounded-full bg-white/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider">
+      <div className="rounded-3xl border border-[#f3aaaa] bg-[linear-gradient(120deg,#fff0f0_0%,#fff7f7_45%,#ffffff_100%)] p-6 text-ink shadow-xl md:p-8">
+        <span className="rounded-full bg-active px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
           Teacher workspace
         </span>
         <h2 className="mt-3 text-3xl font-extrabold">
           Teacher Dashboard
         </h2>
-        <p className="mt-2 text-xs text-red-100">
+        <p className="mt-2 text-xs text-muted">
           Manage your courses, classes, students, and teaching activities.
         </p>
       </div>
@@ -184,13 +184,13 @@ function DashboardView({ data }) {
         {stats.map(([label, value, note]) => (
           <article
             key={label}
-            className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm"
+            className="rounded-2xl border border-border-subtle/70 bg-white p-5 shadow-sm"
           >
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-subtle">
               {label}
             </p>
             <h3 className="mt-2 text-3xl font-extrabold">{value}</h3>
-            <span className="mt-2 block text-[10px] text-slate-500">
+            <span className="mt-2 block text-[10px] text-muted">
               {note}
             </span>
           </article>
@@ -202,10 +202,10 @@ function DashboardView({ data }) {
             data.events.slice(0, 5).map((event) => (
               <div
                 key={event.id}
-                className="border-b border-slate-100 py-3 last:border-0"
+                className="border-b border-border-subtle py-3 last:border-0"
               >
                 <b className="block text-sm">{event.title}</b>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-muted">
                   {event.date} · {event.startTime || "Time not set"} ·{" "}
                   {event.location || "Location not set"}
                 </span>
@@ -220,10 +220,10 @@ function DashboardView({ data }) {
             data.activities.slice(0, 5).map((item) => (
               <div
                 key={item.id}
-                className="border-b border-slate-100 py-3 last:border-0"
+                className="border-b border-border-subtle py-3 last:border-0"
               >
                 <b className="block text-sm">{item.title}</b>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-muted">
                   {item.description}
                 </span>
               </div>
@@ -257,7 +257,7 @@ function StudentsView({ data }) {
             setPage(1);
           }}
           placeholder="Search students"
-          className="w-40 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-red-500"
+          className="w-40 rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary"
         />
       }
     >
@@ -265,8 +265,9 @@ function StudentsView({ data }) {
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-slate-400">
+              <thead className="border-b border-border-subtle text-[10px] uppercase tracking-wider text-subtle">
                 <tr>
+                  <th className="p-3">Student ID</th>
                   <th className="p-3">Student</th>
                   <th className="p-3">Contact</th>
                   <th className="p-3">Status</th>
@@ -275,11 +276,14 @@ function StudentsView({ data }) {
               </thead>
               <tbody>
                 {rows.map((student) => (
-                  <tr key={student.id} className="border-b border-slate-100">
+                  <tr key={student.id} className="border-b border-border-subtle">
+                    <td className="p-3 font-mono text-xs">
+                      {student.studentId || "—"}
+                    </td>
                     <td className="p-3 font-semibold">
                       {student.displayName || "Unnamed student"}
                     </td>
-                    <td className="p-3 text-slate-500">
+                    <td className="p-3 text-muted">
                       {student.email || "No contact"}
                     </td>
                     <td className="p-3">
@@ -288,7 +292,7 @@ function StudentsView({ data }) {
                     <td className="p-3">
                       <Link
                         href={`/teacher/students/${student.id}`}
-                        className="font-semibold text-red-600 hover:underline"
+                        className="font-semibold text-primary hover:underline"
                       >
                         View profile →
                       </Link>
@@ -302,7 +306,7 @@ function StudentsView({ data }) {
             <button
               disabled={page === 1}
               onClick={() => setPage(page - 1)}
-              className="font-semibold text-red-600 disabled:text-slate-300"
+              className="font-semibold text-primary disabled:text-subtle"
             >
               Previous
             </button>
@@ -312,7 +316,7 @@ function StudentsView({ data }) {
             <button
               disabled={page * 10 >= filtered.length}
               onClick={() => setPage(page + 1)}
-              className="font-semibold text-red-600 disabled:text-slate-300"
+              className="font-semibold text-primary disabled:text-subtle"
             >
               Next
             </button>
@@ -333,14 +337,14 @@ function TrainingView({ data }) {
           <Link
             key={course.id}
             href={`/teacher/courses/${course.id}`}
-            className="mb-3 block w-full rounded-2xl border border-slate-200 p-4 text-left hover:border-red-400"
+            className="mb-3 block w-full rounded-2xl border border-border-subtle p-4 text-left hover:border-red-line"
           >
             <b className="block">{course.title}</b>
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-muted">
               {course.status || "Active"} ·{" "}
               {course.description || "No description"}
             </span>
-            <span className="mt-3 block text-xs font-bold text-red-600">
+            <span className="mt-3 block text-xs font-bold text-primary">
               Open course details →
             </span>
           </Link>
@@ -377,7 +381,7 @@ function AttendanceView({ data, teacherId }) {
           <select
             value={classId}
             onChange={(event) => setClassId(event.target.value)}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+            className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs"
           >
             <option value="">Select class</option>
             {data.classes.map((item) => (
@@ -390,7 +394,7 @@ function AttendanceView({ data, teacherId }) {
             type="date"
             value={date}
             onChange={(event) => setDate(event.target.value)}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+            className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs"
           />
         </div>
       }
@@ -405,7 +409,7 @@ function AttendanceView({ data, teacherId }) {
             {students.map((student) => (
               <div
                 key={student.id}
-                className="flex items-center justify-between rounded-xl bg-slate-50 p-3 text-xs"
+                className="flex items-center justify-between rounded-xl bg-page p-3 text-xs"
               >
                 <b>{student.displayName || student.email}</b>
                 <select
@@ -413,23 +417,24 @@ function AttendanceView({ data, teacherId }) {
                   onChange={(event) =>
                     setStatus({ ...status, [student.id]: event.target.value })
                   }
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-1"
+                  className="rounded-lg border border-border-subtle bg-white px-2 py-1"
                 >
                   <option value="present">Present</option>
                   <option value="absent">Absent</option>
                   <option value="late">Late</option>
+                  <option value="excused">Excused</option>
                 </select>
               </div>
             ))}
           </div>
           <button
             onClick={save}
-            className="mt-5 rounded-xl bg-red-600 px-5 py-3 text-xs font-bold text-white"
+            className="mt-5 rounded-xl bg-primary px-5 py-3 text-xs font-bold text-white"
           >
             Save attendance
           </button>
           {message && (
-            <p className="mt-3 text-xs text-emerald-600">{message}</p>
+            <p className="mt-3 text-xs text-success">{message}</p>
           )}
         </>
       )}
@@ -495,11 +500,11 @@ function EventsView({ data, teacherId }) {
           />
           <button
             onClick={save}
-            className="rounded-xl bg-red-600 py-3 text-xs font-bold text-white"
+            className="rounded-xl bg-primary py-3 text-xs font-bold text-white"
           >
             Save event
           </button>
-          {message && <p className="text-xs text-emerald-600">{message}</p>}
+          {message && <p className="text-xs text-success">{message}</p>}
         </div>
       </Panel>
       <Panel title="Your events">
@@ -507,11 +512,11 @@ function EventsView({ data, teacherId }) {
           data.events.map((event) => (
             <div
               key={event.id}
-              className="flex items-center justify-between border-b border-slate-100 py-4"
+              className="flex items-center justify-between border-b border-border-subtle py-4"
             >
               <div>
                 <b className="block text-sm">{event.title}</b>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-muted">
                   {event.date} · {event.startTime || "Time not set"} ·{" "}
                   {event.location || "Location not set"}
                 </span>
@@ -522,13 +527,13 @@ function EventsView({ data, teacherId }) {
                     setEditing(event.id);
                     setForm(event);
                   }}
-                  className="text-xs font-bold text-red-600"
+                  className="text-xs font-bold text-primary"
                 >
                   Edit
                 </button>
                 <button
                   onClick={() => deleteTeacherEvent(event.id)}
-                  className="text-xs font-bold text-red-700"
+                  className="text-xs font-bold text-primary"
                 >
                   Delete
                 </button>
@@ -548,7 +553,7 @@ function StudentPicker({ students, value, onChange }) {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+      className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs"
     >
       <option value="">Select student</option>
       {students.map((student) => (
@@ -592,12 +597,12 @@ function AchievementsView({ data, teacherId }) {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Achievement title"
-            className="rounded-xl border border-slate-200 px-3 py-2 text-xs"
+            className="rounded-xl border border-border-subtle px-3 py-2 text-xs"
           />
           <button
             onClick={create}
             disabled={!title || !studentId}
-            className="rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+            className="rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
           >
             Award
           </button>
@@ -606,9 +611,9 @@ function AchievementsView({ data, teacherId }) {
     >
       {data.achievements.length ? (
         data.achievements.map((item) => (
-          <div key={item.id} className="border-b border-slate-100 py-3">
+          <div key={item.id} className="border-b border-border-subtle py-3">
             <b>{item.title}</b>
-            <span className="ml-3 text-xs text-slate-500">
+            <span className="ml-3 text-xs text-muted">
               {studentLabel(data.students, item.studentId)}
             </span>
           </div>
@@ -648,12 +653,12 @@ function CertificatesView({ data, teacherId }) {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Certificate title"
-            className="rounded-xl border border-slate-200 px-3 py-2 text-xs"
+            className="rounded-xl border border-border-subtle px-3 py-2 text-xs"
           />
           <button
             onClick={create}
             disabled={!title || !studentId}
-            className="rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+            className="rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
           >
             Issue
           </button>
@@ -662,9 +667,9 @@ function CertificatesView({ data, teacherId }) {
     >
       {data.certificates.length ? (
         data.certificates.map((item) => (
-          <div key={item.id} className="border-b border-slate-100 py-3">
+          <div key={item.id} className="border-b border-border-subtle py-3">
             <b>{item.title}</b>
-            <span className="ml-3 text-xs text-slate-500">
+            <span className="ml-3 text-xs text-muted">
               {studentLabel(data.students, item.studentId)} · {item.certificateId || item.id} · {item.status}
             </span>
           </div>
@@ -676,116 +681,8 @@ function CertificatesView({ data, teacherId }) {
   );
 }
 
-function ChatView({ data, teacherId }) {
-  const [selected, setSelected] = useState(data.conversations[0]?.id || "");
-  const [messages, setMessages] = useState([]);
-  const [body, setBody] = useState("");
-  const conversation = data.conversations.find((item) => item.id === selected);
-  useEffect(
-    () => subscribeConversationMessages(selected, setMessages, () => {}),
-    [selected],
-  );
-  async function send() {
-    if (!body || !conversation) return;
-    await sendTeacherMessage(
-      teacherId,
-      conversation.id,
-      conversation.studentId,
-      body,
-    );
-    setBody("");
-  }
-  return (
-    <div className="grid gap-4 lg:grid-cols-[.35fr_1fr]">
-      <Panel title="Conversations">
-        {data.conversations.length ? (
-          data.conversations.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setSelected(item.id)}
-              className={`mb-2 w-full rounded-xl p-3 text-left text-xs ${selected === item.id ? "bg-red-50 text-red-700" : "bg-slate-50"}`}
-            >
-              Student: {item.studentId || "Unknown"}
-            </button>
-          ))
-        ) : (
-          <Empty>No conversations</Empty>
-        )}
-      </Panel>
-      <Panel title="Messages">
-        {conversation ? (
-          <>
-            <div className="min-h-64 space-y-3">
-              {messages.length ? (
-                messages.map((item) => (
-                  <div
-                    key={item.id}
-                    className="rounded-xl bg-slate-50 p-3 text-xs"
-                  >
-                    <b>{item.senderId === teacherId ? "You" : "Student"}</b>
-                    <p className="mt-1">{item.body}</p>
-                  </div>
-                ))
-              ) : (
-                <Empty>No messages</Empty>
-              )}
-            </div>
-            <div className="mt-4 flex gap-2">
-              <input
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs"
-                placeholder="Write a message"
-              />
-              <button
-                onClick={send}
-                className="rounded-xl bg-red-600 px-4 text-xs font-bold text-white"
-              >
-                Send
-              </button>
-            </div>
-          </>
-        ) : (
-          <Empty>Select a conversation</Empty>
-        )}
-      </Panel>
-    </div>
-  );
-}
-
 function ScopedRecordsView({ title, records, empty }) {
-  return <Panel title={title}>{records.length ? records.map((item) => <div key={item.id} className="border-b border-slate-100 py-3 last:border-0"><b className="block text-sm">{item.title || item.name || item.id}</b><span className="text-xs text-slate-500">{item.status || "No status"}</span></div>) : <Empty>{empty}</Empty>}</Panel>;
-}
-
-function NotificationsView({ data }) {
-  const items = [...data.notifications].sort((a, b) =>
-    String(b.createdAt?.toMillis?.() || "").localeCompare(
-      String(a.createdAt?.toMillis?.() || ""),
-    ),
-  );
-  return (
-    <Panel title="Notifications">
-      {items.length ? (
-        items.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => !item.readAt && markNotificationRead(item.id)}
-            className={`mb-2 flex w-full items-start justify-between gap-3 rounded-xl p-3 text-left text-xs ${item.readAt ? "bg-slate-50 text-slate-500" : "bg-red-50 text-slate-700"}`}
-          >
-            <span>
-              <b className="block">{item.title}</b>
-              {item.body}
-            </span>
-            {!item.readAt && (
-              <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-red-500" />
-            )}
-          </button>
-        ))
-      ) : (
-        <Empty>No notifications</Empty>
-      )}
-    </Panel>
-  );
+  return <Panel title={title}>{records.length ? records.map((item) => <div key={item.id} className="border-b border-border-subtle py-3 last:border-0"><b className="block text-sm">{item.title || item.name || item.id}</b><span className="text-xs text-muted">{item.status || "No status"}</span></div>) : <Empty>{empty}</Empty>}</Panel>;
 }
 
 function ProfileView({ user, profile }) {
@@ -822,11 +719,11 @@ function ProfileView({ user, profile }) {
         <button
           onClick={save}
           disabled={saving}
-          className="w-fit rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
+          className="w-fit rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
         >
           {saving ? "Saving..." : "Save changes"}
         </button>
-        {message && <p className="text-xs text-slate-500">{message}</p>}
+        {message && <p className="text-xs text-muted">{message}</p>}
       </div>
     </Panel>
   );
@@ -878,23 +775,23 @@ function DocumentsView({ data, teacherId }) {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search documents"
-          className="w-40 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-red-500"
+          className="w-40 rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary"
         />
       }
     >
-      <div className="mb-5 flex flex-wrap items-end gap-2 rounded-2xl bg-slate-50 p-4">
+      <div className="mb-5 flex flex-wrap items-end gap-2 rounded-2xl bg-page p-4">
         <Field
           label="Title (optional)"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Document title"
         />
-        <label className="grid gap-1 text-xs font-semibold text-slate-600">
+        <label className="grid gap-1 text-xs font-semibold text-muted">
           Course (optional)
           <select
             value={courseId}
             onChange={(event) => setCourseId(event.target.value)}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs"
+            className="rounded-xl border border-border-subtle bg-page px-3 py-2.5 text-xs"
           >
             <option value="">No course</option>
             {data.courses.map((course) => (
@@ -904,29 +801,29 @@ function DocumentsView({ data, teacherId }) {
             ))}
           </select>
         </label>
-        <label className="rounded-xl bg-red-600 px-4 py-2.5 text-xs font-bold text-white">
+        <label className="rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white">
           {uploading ? "Uploading..." : "Upload file"}
           <input type="file" onChange={handleUpload} disabled={uploading} className="hidden" />
         </label>
       </div>
-      {message && <p className="mb-3 text-xs text-slate-500">{message}</p>}
+      {message && <p className="mb-3 text-xs text-muted">{message}</p>}
       {filtered.length ? (
         <div className="space-y-2">
           {filtered.map((item) => (
-            <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-xs">
+            <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-page p-3 text-xs">
               <div className="min-w-0">
                 <b className="block truncate">{item.title}</b>
-                <span className="text-slate-500">
+                <span className="text-muted">
                   {item.status === "ready" ? item.fileName : item.status}
                 </span>
               </div>
               <div className="flex shrink-0 gap-3">
                 {item.fileUrl && (
-                  <a href={item.fileUrl} target="_blank" rel="noreferrer" className="font-bold text-red-600">
+                  <a href={item.fileUrl} target="_blank" rel="noreferrer" className="font-bold text-primary">
                     Download
                   </a>
                 )}
-                <button onClick={() => remove(item)} className="font-bold text-slate-400 hover:text-red-600">
+                <button onClick={() => remove(item)} className="font-bold text-subtle hover:text-primary">
                   Delete
                 </button>
               </div>
@@ -957,20 +854,20 @@ function PromotionLinkCard({ link, courseTitle, leads }) {
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 p-4">
+    <div className="rounded-2xl border border-border-subtle p-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <b className="block text-sm">{courseTitle}</b>
-          <span className="break-all text-xs text-slate-500">{url}</span>
+          <span className="break-all text-xs text-muted">{url}</span>
           <div className="mt-3 flex gap-2">
-            <button onClick={copy} className="rounded-lg bg-red-600 px-3 py-1.5 text-[11px] font-bold text-white">
+            <button onClick={copy} className="rounded-lg bg-primary px-3 py-1.5 text-[11px] font-bold text-white">
               {copied ? "Copied!" : "Copy link"}
             </button>
           </div>
-          <div className="mt-3 flex gap-4 text-[11px] text-slate-500">
-            <span><b className="text-slate-800">{link.viewCount || 0}</b> views</span>
-            <span><b className="text-slate-800">{link.clickCount || 0}</b> clicks</span>
-            <span><b className="text-slate-800">{link.registrationCount || 0}</b> registrations</span>
+          <div className="mt-3 flex gap-4 text-[11px] text-muted">
+            <span><b className="text-ink">{link.viewCount || 0}</b> views</span>
+            <span><b className="text-ink">{link.clickCount || 0}</b> clicks</span>
+            <span><b className="text-ink">{link.registrationCount || 0}</b> registrations</span>
           </div>
         </div>
         {qrImage && (
@@ -979,13 +876,13 @@ function PromotionLinkCard({ link, courseTitle, leads }) {
         )}
       </div>
       {leads.length > 0 && (
-        <div className="mt-4 border-t border-slate-100 pt-3">
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Leads</p>
+        <div className="mt-4 border-t border-border-subtle pt-3">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-subtle">Leads</p>
           <div className="space-y-1">
             {leads.map((lead) => (
-              <div key={lead.id} className="flex justify-between text-xs text-slate-600">
+              <div key={lead.id} className="flex justify-between text-xs text-muted">
                 <span>{lead.name}</span>
-                <span className="text-slate-400">{lead.email}</span>
+                <span className="text-subtle">{lead.email}</span>
               </div>
             ))}
           </div>
@@ -1022,7 +919,7 @@ function PromoteView({ data, teacherId }) {
           <select
             value={courseId}
             onChange={(event) => setCourseId(event.target.value)}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+            className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs"
           >
             <option value="">Select training</option>
             {data.courses.map((course) => (
@@ -1034,7 +931,7 @@ function PromoteView({ data, teacherId }) {
           <button
             onClick={generate}
             disabled={!courseId || creating}
-            className="rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+            className="rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
           >
             {creating ? "Generating..." : "Generate link"}
           </button>
@@ -1125,7 +1022,7 @@ function ScanQrView({ data }) {
           <select
             value={classId}
             onChange={(event) => setClassId(event.target.value)}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+            className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs"
           >
             <option value="">Select class</option>
             {data.classes.map((item) => (
@@ -1144,14 +1041,14 @@ function ScanQrView({ data }) {
             {!scanning && (
               <button
                 onClick={startScanning}
-                className="mt-4 w-full rounded-xl bg-red-600 py-3 text-xs font-bold text-white"
+                className="mt-4 w-full rounded-xl bg-primary py-3 text-xs font-bold text-white"
               >
                 Start camera scan
               </button>
             )}
-            {cameraError && <p className="mt-3 text-xs text-red-600">{cameraError}</p>}
-            <div className="mt-5 border-t border-slate-100 pt-4">
-              <p className="mb-2 text-xs font-semibold text-slate-500">
+            {cameraError && <p className="mt-3 text-xs text-primary">{cameraError}</p>}
+            <div className="mt-5 border-t border-border-subtle pt-4">
+              <p className="mb-2 text-xs font-semibold text-muted">
                 Camera denied? Paste the QR token manually:
               </p>
               <div className="flex gap-2">
@@ -1159,12 +1056,12 @@ function ScanQrView({ data }) {
                   value={manualToken}
                   onChange={(event) => setManualToken(event.target.value)}
                   placeholder="Scanned token"
-                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs"
+                  className="flex-1 rounded-xl border border-border-subtle px-3 py-2 text-xs"
                 />
                 <button
                   onClick={() => handleToken(manualToken)}
                   disabled={busy || !manualToken}
-                  className="rounded-xl bg-slate-800 px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
+                  className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
                 >
                   Submit
                 </button>
@@ -1179,7 +1076,7 @@ function ScanQrView({ data }) {
         ) : !result ? (
           <Empty>Scan a QR code to see the result here.</Empty>
         ) : result.ok ? (
-          <div className={`rounded-2xl p-4 text-sm ${result.code === "already_marked" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>
+          <div className={`rounded-2xl p-4 text-sm ${result.code === "already_marked" ? "bg-warning-soft text-warning" : "bg-success-soft text-success"}`}>
             <b className="block">{result.message}</b>
             {result.student && (
               <p className="mt-2 text-xs">
@@ -1188,7 +1085,7 @@ function ScanQrView({ data }) {
             )}
           </div>
         ) : (
-          <div className="rounded-2xl bg-red-50 p-4 text-sm text-red-700">{result.message}</div>
+          <div className="rounded-2xl bg-active p-4 text-sm text-primary">{result.message}</div>
         )}
       </Panel>
     </div>
@@ -1231,10 +1128,10 @@ export default function TeacherWorkspacePage({ module = "Dashboard" }) {
   const unread = useMemo(
     () =>
       data.conversations.reduce(
-        (total, conversation) => total + Number(conversation.unreadCount || 0),
+        (total, conversation) => total + Number(conversation.unreadCount?.[user?.uid] || 0),
         0,
       ),
-    [data.conversations],
+    [data.conversations, user?.uid],
   );
   const content = module === "Training" ? (
     <TrainingManagement role="Teacher" />
@@ -1263,7 +1160,12 @@ export default function TeacherWorkspacePage({ module = "Dashboard" }) {
   ) : module === "Results" ? (
     <ScopedRecordsView title="Results" records={data.submissions.filter((item) => item.score != null)} empty="No graded results found." />
   ) : module === "Notifications" ? (
-    <NotificationsView data={data} />
+    <Panel title="Notifications">
+      <NotificationList
+        items={data.notifications}
+        onItemClick={(item) => !item.readAt && markNotificationRead(item.id)}
+      />
+    </Panel>
   ) : module === "Profile" ? (
     <ProfileView user={user} profile={profile} />
   ) : module === "ID Card" ? (
@@ -1281,8 +1183,14 @@ export default function TeacherWorkspacePage({ module = "Dashboard" }) {
     <DocumentsView data={data} teacherId={user.uid} />
   ) : module === "Promote" ? (
     <PromoteView data={data} teacherId={user.uid} />
+  ) : module === "Chat" ? (
+    <ChatWorkspace
+      currentUserId={user.uid}
+      currentUserRole="Teacher"
+      currentUserName={profile?.displayName || user.email}
+    />
   ) : (
-    <ChatView data={data} teacherId={user.uid} />
+    <Empty>Module not found.</Empty>
   );
   return (
     <TeacherGate>

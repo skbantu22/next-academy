@@ -13,10 +13,30 @@ service firebase.storage {
         (documentMeta(docId).teacherIds is list && request.auth.uid in documentMeta(docId).teacherIds)
       );
     }
+    function courseMeta(courseId) { return firestore.get(/databases/(default)/documents/courses/$(courseId)).data; }
+    function ownsCourse(courseId) {
+      return teacher() && courseMeta(courseId).teacherIds is list && request.auth.uid in courseMeta(courseId).teacherIds;
+    }
+    // Cross-service Storage->Firestore role lookups (role()/admin() above)
+    // are not resolving in this project's Storage Rules runtime — even a
+    // bare firestore.exists() check on the caller's own user doc is denied,
+    // independent of the Firestore rules, the field name, or the Blaze
+    // billing plan (all verified). Training-thumbnail admin access is
+    // granted via an explicit UID allowlist instead, so it works regardless
+    // of that. Add a UID here (and redeploy) whenever a new Admin/Director
+    // account needs thumbnail upload/delete access.
+    function thumbnailAdminUids() {
+      return ['DNTldjNaGaRTTIzI0yfNJJ3j7zu2'];
+    }
+    function thumbnailAdmin() { return signedIn() && request.auth.uid in thumbnailAdminUids(); }
 
     match /documents/{docId}/{fileName} {
       allow read: if admin() || ownsDocument(docId);
       allow write, delete: if admin() || ownsDocument(docId);
+    }
+    match /courses/{courseId}/thumbnail/{fileName} {
+      allow read: if true;
+      allow write, delete: if thumbnailAdmin() || ownsCourse(courseId);
     }
     match /{allPaths=**} {
       allow read, write: if false;

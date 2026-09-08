@@ -3,6 +3,30 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Dashboard color system — warm off-white page, white cards, dark
+     charcoal text, and a red accent with soft tonal backgrounds for
+     status/category badges. Scoped to dashboard surfaces only; the
+     public site/auth pages keep using --background/--foreground above. */
+  --dash-page: #faf9f7;
+  --dash-ink: #1f2328;
+  --dash-muted: #667085;
+  --dash-subtle: #98a2b3;
+  --dash-border: #e7e5e4;
+  --dash-primary: #ff2d2d;
+  --dash-primary-hover: #e01f1f;
+  --dash-active: #fff1f1;
+  --dash-red-line: #ffb8b8;
+  --dash-success: #22c55e;
+  --dash-success-soft: #ecfdf3;
+  --dash-info: #3b82f6;
+  --dash-info-soft: #eff6ff;
+  --dash-warning: #f59e0b;
+  --dash-warning-soft: #fff7ed;
+  --dash-purple: #a855f7;
+  --dash-purple-soft: #faf5ff;
+  --dash-teal: #14b8a6;
+  --dash-teal-soft: #f0fdfa;
 }
 
 @theme inline {
@@ -10,6 +34,26 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --color-page: var(--dash-page);
+  --color-ink: var(--dash-ink);
+  --color-muted: var(--dash-muted);
+  --color-subtle: var(--dash-subtle);
+  --color-border-subtle: var(--dash-border);
+  --color-primary: var(--dash-primary);
+  --color-primary-hover: var(--dash-primary-hover);
+  --color-active: var(--dash-active);
+  --color-red-line: var(--dash-red-line);
+  --color-success: var(--dash-success);
+  --color-success-soft: var(--dash-success-soft);
+  --color-info: var(--dash-info);
+  --color-info-soft: var(--dash-info-soft);
+  --color-warning: var(--dash-warning);
+  --color-warning-soft: var(--dash-warning-soft);
+  --color-purple: var(--dash-purple);
+  --color-purple-soft: var(--dash-purple-soft);
+  --color-teal: var(--dash-teal);
+  --color-teal-soft: var(--dash-teal-soft);
 }
 
 @media (prefers-color-scheme: dark) {

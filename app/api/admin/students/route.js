@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "../../../../lib/firebase-admin";
+import { attendancePercent } from "../../../../lib/attendance";
+import { nextStudentCode } from "../../../../lib/server/student-id";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,14 +43,10 @@ export async function GET(request) {
       const totalAssignments = assignmentRows.filter((item) => courseIds.has(item.courseId));
       const completed = new Set(submissionRows.filter((item) => item.studentId === student.id && courseIds.has(item.courseId)).map((item) => item.assignmentId).filter(Boolean));
       const ownAttendance = attendanceRows.filter((item) => item.studentId === student.id);
-      return { ...student, studentId: student.studentId || null, courseNames: [...courseIds].map((id) => courseMap.get(id)?.title || "Course unavailable").join(", ") || null, progress: percent(completed.size, totalAssignments.length), attendance: percent(ownAttendance.filter((item) => ["present", "late"].includes(item.status)).length, ownAttendance.length) };
+      return { ...student, studentId: student.studentId || null, courseNames: [...courseIds].map((id) => courseMap.get(id)?.title || "Course unavailable").join(", ") || null, progress: percent(completed.size, totalAssignments.length), attendance: attendancePercent(ownAttendance) };
     });
     return NextResponse.json({ students: rows });
   } catch (error) { return failure("student-list request", error); }
-}
-async function nextStudentId(db) {
-  const ref = db.collection("_counters").doc("students");
-  return db.runTransaction(async (transaction) => { const snapshot = await transaction.get(ref); const next = (snapshot.data()?.lastStudentNumber || 0) + 1; transaction.set(ref, { lastStudentNumber: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true }); return `STU-${String(next).padStart(3, "0")}`; });
 }
 export async function POST(request) {
   let createdUser;
@@ -63,7 +61,7 @@ export async function POST(request) {
     if (!selectedClass) return NextResponse.json({ message: "This course has no active class available for enrollment." }, { status: 400 });
     createdUser = await access.auth.createUser({ email: normalizedEmail, password, displayName: displayName.trim(), disabled: false });
     try {
-      const studentId = await nextStudentId(access.db), now = FieldValue.serverTimestamp(), teacherIds = [...new Set([...(course.data().teacherIds || []), ...(selectedClass.teacherIds || [])])], batch = access.db.batch();
+      const studentId = await nextStudentCode(access.db), now = FieldValue.serverTimestamp(), teacherIds = [...new Set([...(course.data().teacherIds || []), ...(selectedClass.teacherIds || [])])], batch = access.db.batch();
       batch.create(access.db.collection("users").doc(createdUser.uid), { uid: createdUser.uid, studentId, email: createdUser.email || normalizedEmail, displayName: displayName.trim(), phone: phone.trim(), photoURL: "", role: "Student", active: true, teacherIds, createdAt: now, updatedAt: now });
       batch.create(access.db.collection("enrollments").doc(`${courseId}_${createdUser.uid}`), { courseId, classId: selectedClass.id, studentId: createdUser.uid, status: "active", enrolledAt: now, completedAt: null });
       await batch.commit(); return NextResponse.json({ uid: createdUser.uid, studentId }, { status: 201 });

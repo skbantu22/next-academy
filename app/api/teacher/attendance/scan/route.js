@@ -111,6 +111,16 @@ export async function POST(request) {
     entityId: attendanceId,
     createdAt: FieldValue.serverTimestamp(),
   });
+  await db.collection("notifications").add({
+    userId: studentId,
+    type: "attendance",
+    title: "Attendance marked",
+    body: `You were marked present in ${classSnapshot.data().name || "class"} today.`,
+    entityId: attendanceId,
+    actionUrl: null,
+    readAt: null,
+    createdAt: FieldValue.serverTimestamp(),
+  });
 
   return NextResponse.json({
     code: "success",

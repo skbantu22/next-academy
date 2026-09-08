@@ -9,10 +9,16 @@ import StudentManagement from "../../../components/StudentManagement";
 import TeacherAssignment from "../../../components/teacher-assignment/TeacherAssignment";
 import SidebarIcon from "../../../components/dashboard/SidebarIcon";
 import DirectorOverview from "../../../components/dashboard/DirectorOverview";
+import DirectorShell from "../../../components/dashboard/DirectorShell";
+import AdminShell from "../../../components/dashboard/AdminShell";
 import UserManagement from "../../../components/users/UserManagement";
 import TrainingManagement from "../../../components/training/TrainingManagement";
+import FinanceManagement from "../../../components/finance/FinanceManagement";
+import MyPaymentSummary from "../../../components/students/MyPaymentSummary";
+import LoadingScreen from "../../../components/dashboard/LoadingScreen";
+import ChatWorkspace from "../../../components/chat/ChatWorkspace";
 
-const roleConfig = {
+export const roleConfig = {
   Student: {
     greeting: "Continue building your future with focused, practical learning.",
     modules: [
@@ -136,40 +142,18 @@ const teacherUnavailableStats = [
   ["Class rating", "â€”", "No rating records available"],
 ];
 
-function Brand() {
-  return (
-    <div className="flex items-center gap-3">
-      <img
-        src="/logo.jpeg"
-        alt="Next Academy logo"
-        className="h-10 w-10 rounded-xl object-contain shadow-lg shadow-red-950/30"
-      />
-      <div>
-        <p className="text-sm font-bold leading-tight text-white">
-          Next Academy
-        </p>
-        <p className="text-[9px] font-semibold uppercase tracking-[.18em] text-red-300">
-          Learning platform
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function EmptyDataPanel({ title, message }) {
   return (
-    <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-6 shadow-sm">
-      <h2 className="font-bold text-slate-800">{title}</h2>
-      <p className="mt-4 text-sm text-slate-500">{message}</p>
+    <div className="rounded-3xl border border-dashed border-border-subtle bg-white p-6 shadow-sm">
+      <h2 className="font-bold text-ink">{title}</h2>
+      <p className="mt-4 text-sm text-muted">{message}</p>
     </div>
   );
 }
 
 function DirectorDashboard({ profile, user }) {
   const { logout } = useAuth();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [active, setActive] = useState("Dashboard");
-  const [profileOpen, setProfileOpen] = useState(false);
   const config = roleConfig.Director;
   const name =
     profile.displayName ||
@@ -177,131 +161,22 @@ function DirectorDashboard({ profile, user }) {
     user.email?.split("@")[0] ||
     "Director";
   const initials = name.slice(0, 2).toUpperCase();
-  const unavailable = active !== "Dashboard";
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-800 md:flex">
-      <aside
-        className={`${mobileOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-40 flex h-screen w-[280px] flex-col bg-slate-950 text-slate-300 shadow-2xl transition-transform duration-300 md:sticky md:top-0 md:translate-x-0 md:shadow-none`}
-      >
-        <div className="flex items-center justify-between border-b border-slate-800 p-5">
-          <Brand />
-          <button
-            onClick={() => setMobileOpen(false)}
-            className="text-xl text-slate-400 md:hidden"
-            aria-label="Close menu"
-          >
-            Ã—
-          </button>
-        </div>
-        <div className="border-b border-slate-800 px-5 py-4">
-          <span className="rounded bg-red-500/15 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-red-300">
-            Director workspace
-          </span>
-        </div>
-        <nav className="flex-1 overflow-y-auto px-4 py-5">
-          {config.modules.map((module) => (
-            <button
-              key={module}
-              onClick={() => {
-                setActive(module);
-                setMobileOpen(false);
-              }}
-              className={`mb-2 flex min-h-12 w-full items-center gap-4 rounded-xl px-4 py-3 text-left text-[15px] font-semibold transition ${active === module ? "bg-red-600 text-white shadow-lg shadow-red-950/30" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
-            >
-              <span className="grid h-6 w-6 shrink-0 place-items-center">
-                <SidebarIcon name={module} className="h-6 w-6" />
-              </span>
-              {module}
-            </button>
-          ))}
-        </nav>
-        <div className="border-t border-slate-800 bg-slate-950/60 p-4">
-          <div className="flex items-center gap-3">
-            <span className="grid h-9 w-9 place-items-center rounded-full bg-red-700 text-sm font-bold text-white">
-              {initials}
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-white">DIRECTOR</p>
-              <p className="truncate text-xs text-slate-400">director@learninghome.org</p>
-            </div>
-          </div>
-          <button
-            onClick={logout}
-            className="mt-4 w-full rounded-lg bg-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-300 hover:text-red-300"
-          >
-            â†ª Sign Out Session
-          </button>
-        </div>
-      </aside>
-      {mobileOpen && (
-        <button
-          className="fixed inset-0 z-30 bg-slate-950/60 md:hidden"
-          onClick={() => setMobileOpen(false)}
-          aria-label="Close navigation"
-        />
-      )}
-      <section className="min-w-0 flex-1">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm md:px-6">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="text-xl text-slate-600 md:hidden"
-              aria-label="Open menu"
-            >
-              â˜°
-            </button>
-            <div>
-              <h1 className="text-lg font-bold text-slate-800">
-                {active === "Dashboard" ? "Director Dashboard" : active}
-              </h1>
-              <p className="hidden text-[10px] uppercase tracking-wider text-slate-400 sm:block">
-                Organization overview
-              </p>
-            </div>
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => setProfileOpen(!profileOpen)}
-              className="flex items-center gap-2 border-l border-slate-200 pl-3"
-            >
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-red-600 text-xs font-bold text-white">
-                {initials}
-              </span>
-              <span className="hidden text-left sm:block">
-                <b className="block text-xs text-slate-800">{name}</b>
-                <small className="text-[10px] text-slate-500">Director</small>
-              </span>
-              <span className="text-slate-400">âŒ„</span>
-            </button>
-            {profileOpen && (
-              <div className="absolute right-0 top-12 z-30 w-52 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl">
-                <p className="border-b border-slate-100 pb-3 text-xs font-semibold">
-                  {user.email}
-                </p>
-                <p className="py-3 text-xs text-slate-500">
-                  Authenticated Director profile
-                </p>
-                <button
-                  onClick={logout}
-                  className="w-full rounded-lg bg-red-50 px-3 py-2 text-left text-xs font-bold text-red-700"
-                >
-                  Sign Out Session
-                </button>
-              </div>
-            )}
-          </div>
-        </header>
-        <div className="p-4 md:p-6 lg:p-8">
-          <div className="mx-auto max-w-7xl space-y-6">
-            {active === "Dashboard" && (
-              <DirectorOverview
-                greeting={config.greeting}
-                onOpenStudents={() => setActive("Students")}
-                onOpenReports={() => setActive("Reports")}
-              />
-            )}
-            {active === "Students" ? (
+    <DirectorShell
+      modules={config.modules}
+      active={active}
+      onNavigate={setActive}
+      name={name}
+      initials={initials}
+      userEmail={user.email}
+      headerTitle={active === "Dashboard" ? "Director Dashboard" : active}
+      headerSubtitle="Organization overview"
+      onLogout={logout}
+    >
+            {active === "Dashboard" ? (
+              <DirectorOverview />
+            ) : active === "Students" ? (
               <StudentManagement role="Director" />
             ) : active === "User" ? (
               <UserManagement role="Director" currentUserId={user.uid} />
@@ -309,112 +184,24 @@ function DirectorDashboard({ profile, user }) {
               <TrainingManagement role="Director" />
             ) : active === "Teacher" ? (
               <TeacherAssignment />
-            ) : unavailable ? (
+            ) : active === "Finance" ? (
+              <FinanceManagement />
+            ) : active === "Chat" ? (
+              <ChatWorkspace currentUserId={user.uid} currentUserRole="Director" currentUserName={name} />
+            ) : (
               <EmptyDataPanel
                 title={`${active} module`}
                 message="This Director module does not have an implemented page or permitted Firestore data source yet."
               />
-            ) : (
-              <>
-                <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  {[
-                    [
-                      "Enrolled students",
-                      "No data available",
-                      "No Director student aggregate source",
-                    ],
-                    [
-                      "Active teachers",
-                      "No data available",
-                      "No Director teacher aggregate source",
-                    ],
-                    [
-                      "Monthly revenue",
-                      "No financial data",
-                      "No permitted finance source",
-                    ],
-                    [
-                      "Upcoming events",
-                      "No data available",
-                      "No Director events source",
-                    ],
-                  ].map(([label, value, note]) => (
-                    <article
-                      key={label}
-                      className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm"
-                    >
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        {label}
-                      </p>
-                      <h3 className="mt-3 text-xl font-extrabold text-slate-800">
-                        {value}
-                      </h3>
-                      <span className="mt-3 block text-[10px] leading-4 text-slate-500">
-                        {note}
-                      </span>
-                    </article>
-                  ))}
-                </section>
-                <section className="grid gap-4 lg:grid-cols-2">
-                  <EmptyDataPanel
-                    title="Upcoming events"
-                    message="No upcoming events are available from a Director-authorized data source."
-                  />
-                  <EmptyDataPanel
-                    title="Recent activity"
-                    message="No Director activity records are available."
-                  />
-                </section>
-                <section className="rounded-3xl border border-slate-200/70 bg-white p-6 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="font-bold text-slate-800">
-                        Director modules
-                      </h2>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Navigate to a module to inspect its current
-                        implementation status.
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                      {config.modules.length} areas
-                    </span>
-                  </div>
-                  <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                    {config.modules.map((module) => (
-                      <button
-                        key={module}
-                        onClick={() => setActive(module)}
-                        className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-left transition hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-50"
-                      >
-                        <span className="text-xl text-red-600">
-                          <SidebarIcon name={module} className="h-6 w-6" />
-                        </span>
-                        <b className="mt-3 block text-xs">{module}</b>
-                        <small className="mt-1 block text-[10px] text-slate-500">
-                          {module === "Dashboard"
-                            ? "Available"
-                            : "Not implemented"}
-                        </small>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              </>
             )}
-          </div>
-        </div>
-      </section>
-    </main>
+    </DirectorShell>
   );
 }
 
 function DashboardContent({ role, profile, user }) {
   const router = useRouter();
   const { logout } = useAuth();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [active, setActive] = useState("Dashboard");
-  const [profileOpen, setProfileOpen] = useState(false);
   const [teacherProfile, setTeacherProfile] = useState(profile);
   const [teacherProfileError, setTeacherProfileError] = useState("");
   const config = roleConfig[role] || roleConfig.Student;
@@ -448,7 +235,7 @@ function DashboardContent({ role, profile, user }) {
 
   if (role === "Teacher") {
     return (
-      <div className="grid min-h-screen place-items-center bg-slate-100 text-sm text-slate-500">
+      <div className="grid min-h-screen place-items-center bg-page text-sm text-muted">
         Opening your teacher workspace...
       </div>
     );
@@ -456,164 +243,53 @@ function DashboardContent({ role, profile, user }) {
 
   function selectModule(module) {
     setActive(module);
-    setMobileOpen(false);
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-800 md:flex">
-      <aside
-        className={`${mobileOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-40 flex h-screen w-[280px] flex-col bg-slate-900 text-slate-300 shadow-2xl transition-transform duration-300 md:sticky md:top-0 md:translate-x-0 md:shadow-none`}
-      >
-        <div className="flex items-center justify-between border-b border-slate-800 p-5">
-          <Brand />
-          <button
-            onClick={() => setMobileOpen(false)}
-            className="text-xl text-slate-400 md:hidden"
-            aria-label="Close menu"
-          >
-            Ã—
-          </button>
-        </div>
-        <div className="border-b border-slate-800 px-5 py-4">
-          <span className="rounded bg-red-500/15 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-red-300">
-            {role} workspace
-          </span>
-        </div>
-        <nav className="custom-scrollbar flex-1 overflow-y-auto px-4 py-5">
-          {config.modules.map((module) => (
-            <button
-              key={module}
-              onClick={() => selectModule(module)}
-              className={`mb-2 flex min-h-12 w-full items-center gap-4 rounded-xl px-4 py-3 text-left text-[15px] font-semibold transition ${active === module ? "bg-red-600 text-white shadow-lg shadow-red-950/30" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
-            >
-              <span className="grid h-6 w-6 shrink-0 place-items-center">
-                <SidebarIcon name={module} className="h-6 w-6" />
-              </span>
-              {module}
-              {module === "Chat" && (
-                <b className="ml-auto rounded-full bg-red-400 px-1.5 py-0.5 text-[9px] text-white">
-                  3
-                </b>
-              )}
-            </button>
-          ))}
-        </nav>
-        <div className="border-t border-slate-800 bg-slate-950/40 p-4">
-          <div className="mb-4 flex items-center gap-3">
-            <span className="grid h-9 w-9 place-items-center rounded-full bg-red-700 text-sm font-bold text-white">
-              {initials}
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-white">{name}</p>
-              <p className="truncate text-xs text-slate-400">{user.email}</p>
-            </div>
-          </div>
-          <button
-            onClick={logout}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-300 transition hover:bg-red-600/20 hover:text-red-300"
-          >
-            â†ª Sign Out Session
-          </button>
-        </div>
-      </aside>
-      {mobileOpen && (
-        <button
-          className="fixed inset-0 z-30 bg-slate-950/60 md:hidden"
-          onClick={() => setMobileOpen(false)}
-          aria-label="Close navigation"
-        />
-      )}
-
-      <section className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm md:px-6">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="text-xl text-slate-600 md:hidden"
-              aria-label="Open menu"
-            >
-              â˜°
-            </button>
-            <h1 className="text-lg font-bold text-slate-800 md:text-xl">
-              {active === "Dashboard" ? `${role} Dashboard` : active}
-            </h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="relative hidden sm:block">
-              <input
-                className="w-52 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 pl-9 text-xs outline-none focus:ring-2 focus:ring-red-500"
-                placeholder="Search records, students..."
-              />
-              <span className="absolute left-3 top-2.5 text-slate-400">âŒ•</span>
-            </div>
-            <button
-              onClick={() => selectModule("Chat")}
-              className="relative rounded-xl p-2.5 text-slate-600 hover:bg-slate-100"
-              aria-label="Open chat"
-            >
-              â—Œ
-              <i className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
-            </button>
-            <button
-              onClick={() => setProfileOpen(!profileOpen)}
-              className="flex items-center gap-2 border-l border-slate-200 pl-3"
-            >
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-red-600 text-xs font-bold text-white">
-                {initials}
-              </span>
-              <span className="hidden text-left sm:block">
-                <b className="block text-xs text-slate-800">{name}</b>
-                <small className="text-[10px] text-slate-500">{role}</small>
-              </span>
-              <span className="text-slate-400">âŒ„</span>
-            </button>
-            {profileOpen && (
-              <div className="absolute right-4 top-14 z-30 w-52 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl">
-                <p className="border-b border-slate-100 pb-3 text-xs font-semibold">
-                  {user.email}
-                </p>
-                <p className="py-3 text-xs text-slate-500">
-                  Role: <b className="text-red-600">{role}</b>
-                </p>
-                <button
-                  onClick={logout}
-                  className="w-full rounded-lg bg-red-50 px-3 py-2 text-left text-xs font-bold text-red-700"
-                >
-                  Sign Out Session
-                </button>
-              </div>
-            )}
-          </div>
-        </header>
-        <div className="flex-1 p-4 md:p-6 lg:p-8">
-          <div className="mx-auto max-w-7xl space-y-6">
+    <AdminShell
+      role={role}
+      modules={config.modules}
+      active={active}
+      onNavigate={selectModule}
+      name={name}
+      initials={initials}
+      userEmail={user.email}
+      headerTitle={active === "Dashboard" ? `${role} Dashboard` : active}
+      onLogout={logout}
+    >
             {role === "Admin" && active === "Students" ? (
               <StudentManagement role="Admin" />
             ) : role === "Admin" && active === "User" ? (
               <UserManagement role="Admin" currentUserId={user.uid} />
+            ) : role === "Admin" && active === "Finance" ? (
+              <FinanceManagement />
+            ) : role === "Student" && (active === "Training" || active === "My Training") ? (
+              <MyPaymentSummary />
             ) : (active === "Training" || active === "My Training") ? (
               <TrainingManagement role={role} />
             ) : role === "Admin" && active === "Teacher" ? (
               <TeacherAssignment />
+            ) : active === "Chat" ? (
+              <ChatWorkspace currentUserId={user.uid} currentUserRole={role} currentUserName={name} />
             ) : (
               <>
             {active === "Dashboard" && (
-            <section className="flex flex-col justify-between gap-6 rounded-3xl bg-gradient-to-r from-red-600 via-red-700 to-red-900 p-6 text-white shadow-xl md:flex-row md:items-center md:p-8">
+            <section className="flex flex-col justify-between gap-6 rounded-3xl border border-[#f3aaaa] bg-[linear-gradient(120deg,#fff0f0_0%,#fff7f7_45%,#ffffff_100%)] p-6 text-ink shadow-xl md:flex-row md:items-center md:p-8">
               <div>
-                <span className="rounded-full bg-white/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider">
+                <span className="rounded-full bg-active px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
                   Enterprise workspace Â· {role}
                 </span>
                 <h2 className="mt-3 text-3xl font-extrabold">
                   Welcome, {name}
                 </h2>
-                <p className="mt-2 max-w-xl text-xs leading-relaxed text-red-100">
+                <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted">
                   {config.greeting}
                 </p>
               </div>
               <div className="flex gap-3">
                 <button
                   onClick={() => selectModule(config.modules[1] || "Training")}
-                  className="rounded-xl bg-white px-4 py-3 text-xs font-bold text-red-600 shadow transition hover:bg-red-50"
+                  className="rounded-xl border border-border-subtle bg-white px-4 py-3 text-xs font-bold text-primary shadow transition hover:bg-active"
                 >
                   View programs
                 </button>
@@ -625,7 +301,7 @@ function DashboardContent({ role, profile, user }) {
                         : config.modules[0],
                     )
                   }
-                  className="rounded-xl border border-red-300/40 bg-red-950/30 px-4 py-3 text-xs font-bold text-white transition hover:bg-red-950/60"
+                  className="rounded-xl border border-border-subtle px-4 py-3 text-xs font-bold text-ink transition hover:bg-active"
                 >
                   Quick action
                 </button>
@@ -639,58 +315,58 @@ function DashboardContent({ role, profile, user }) {
               ).map(([label, value, note, icon], index) => (
                 <article
                   key={label}
-                  className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm"
+                  className="flex items-center justify-between rounded-2xl border border-border-subtle/70 bg-white p-5 shadow-sm"
                 >
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-subtle">
                       {label}
                     </p>
-                    <h3 className="mt-2 text-2xl font-extrabold text-slate-800">
+                    <h3 className="mt-2 text-2xl font-extrabold text-ink">
                       {value}
                     </h3>
                     <span
-                      className={`mt-2 inline-block text-[10px] font-bold ${role === "Teacher" ? "text-slate-500" : index === 1 ? "text-amber-600" : "text-emerald-600"}`}
+                      className={`mt-2 inline-block text-[10px] font-bold ${role === "Teacher" ? "text-muted" : index === 1 ? "text-warning" : "text-success"}`}
                     >
                       {note}
                     </span>
                   </div>
-                  <div className="grid h-12 w-12 place-items-center rounded-2xl bg-red-50 text-xl text-red-600 shadow-inner">
+                  <div className="grid h-12 w-12 place-items-center rounded-2xl bg-active text-xl text-primary shadow-inner">
                     {icon || "â€”"}
                   </div>
                 </article>
               ))}
             </section>
             {role === "Teacher" && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-xs text-amber-900">
+              <div className="rounded-2xl border border-warning bg-warning-soft px-5 py-4 text-xs text-warning">
                 Teacher dashboard data is connected to your Firebase profile and
                 updates live. Class, assignment, attendance, schedule, activity,
                 and rating records are not present in the current project schema
                 yet.
                 {teacherProfileError && (
-                  <span className="mt-1 block font-semibold text-red-700">
+                  <span className="mt-1 block font-semibold text-primary">
                     {teacherProfileError}
                   </span>
                 )}
                 {teacherProfile && (
-                  <span className="mt-1 block text-amber-800">
+                  <span className="mt-1 block text-warning">
                     Profile sync active for {teacherProfile.email || user.email}
                     .
                   </span>
                 )}
               </div>
             )}
-            <section className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-sm md:p-6">
+            <section className="rounded-3xl border border-border-subtle/70 bg-white p-5 shadow-sm md:p-6">
               <div className="mb-5 flex items-center justify-between">
                 <div>
-                  <h2 className="font-bold text-slate-800">
+                  <h2 className="font-bold text-ink">
                     Workspace modules
                   </h2>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-muted">
                     Access the tools available for your {role.toLowerCase()}{" "}
                     role.
                   </p>
                 </div>
-                <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:block">
+                <span className="hidden rounded-full bg-page px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted sm:block">
                   {config.modules.length} modules
                 </span>
               </div>
@@ -699,14 +375,14 @@ function DashboardContent({ role, profile, user }) {
                   <button
                     key={module}
                     onClick={() => selectModule(module)}
-                    className={`group rounded-2xl border p-4 text-center transition ${active === module ? "border-red-500 bg-red-50" : "border-slate-100 bg-slate-50/50 hover:border-red-300 hover:bg-red-50/50"}`}
+                    className={`group rounded-2xl border p-4 text-center transition ${active === module ? "border-primary bg-active" : "border-border-subtle bg-page/50 hover:border-red-line hover:bg-active/50"}`}
                   >
                     <span
-                      className={`mx-auto grid h-11 w-11 place-items-center rounded-xl bg-white text-lg shadow-sm transition group-hover:bg-red-600 group-hover:text-white ${active === module ? "bg-red-600 text-white" : "text-slate-700"}`}
+                      className={`mx-auto grid h-11 w-11 place-items-center rounded-xl bg-white text-lg shadow-sm transition group-hover:bg-primary group-hover:text-white ${active === module ? "bg-primary text-white" : "text-muted"}`}
                     >
                       <SidebarIcon name={module} className="h-6 w-6" />
                     </span>
-                    <span className="mt-3 block text-[11px] font-bold text-slate-700">
+                    <span className="mt-3 block text-[11px] font-bold text-muted">
                       {module}
                     </span>
                   </button>
@@ -726,12 +402,12 @@ function DashboardContent({ role, profile, user }) {
               </section>
             ) : (
               <section className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-3xl border border-slate-200/70 bg-white p-6 shadow-sm">
+                <div className="rounded-3xl border border-border-subtle/70 bg-white p-6 shadow-sm">
                   <div className="flex items-center justify-between">
-                    <h2 className="font-bold text-slate-800">
+                    <h2 className="font-bold text-ink">
                       Upcoming schedule
                     </h2>
-                    <button className="text-xs font-bold text-red-600">
+                    <button className="text-xs font-bold text-primary">
                       View all â†’
                     </button>
                   </div>
@@ -741,41 +417,41 @@ function DashboardContent({ role, profile, user }) {
                     "Portfolio review",
                   ].map((item, index) => (
                     <div
-                      className="flex items-center gap-4 border-b border-slate-100 py-4 last:border-0"
+                      className="flex items-center gap-4 border-b border-border-subtle py-4 last:border-0"
                       key={item}
                     >
-                      <span className="grid h-11 w-11 place-items-center rounded-xl bg-red-50 text-center text-red-600">
+                      <span className="grid h-11 w-11 place-items-center rounded-xl bg-active text-center text-primary">
                         <b className="block text-lg">{10 + index * 2}</b>
                       </span>
                       <div>
-                        <b className="block text-xs text-slate-800">{item}</b>
-                        <span className="text-[10px] text-slate-500">
+                        <b className="block text-xs text-ink">{item}</b>
+                        <span className="text-[10px] text-muted">
                           {index === 0
                             ? "Today Â· 14:00 Â· Room A"
                             : "This week Â· Next Academy"}
                         </span>
                       </div>
-                      <span className="ml-auto text-slate-400">â†’</span>
+                      <span className="ml-auto text-subtle">â†’</span>
                     </div>
                   ))}
                 </div>
-                <div className="rounded-3xl border border-slate-200/70 bg-white p-6 shadow-sm">
-                  <h2 className="font-bold text-slate-800">Recent activity</h2>
+                <div className="rounded-3xl border border-border-subtle/70 bg-white p-6 shadow-sm">
+                  <h2 className="font-bold text-ink">Recent activity</h2>
                   {[
                     "Module completed",
                     "Achievement unlocked",
                     "Feedback received",
                   ].map((item, index) => (
                     <div
-                      className="flex items-center gap-3 border-b border-slate-100 py-4 last:border-0"
+                      className="flex items-center gap-3 border-b border-border-subtle py-4 last:border-0"
                       key={item}
                     >
-                      <span className="grid h-8 w-8 place-items-center rounded-full bg-emerald-50 text-sm text-emerald-600">
+                      <span className="grid h-8 w-8 place-items-center rounded-full bg-success-soft text-sm text-success">
                         {index === 0 ? "âœ“" : index === 1 ? "âœ¦" : "â†—"}
                       </span>
                       <div>
-                        <b className="block text-xs text-slate-800">{item}</b>
-                        <span className="text-[10px] text-slate-500">
+                        <b className="block text-xs text-ink">{item}</b>
+                        <span className="text-[10px] text-muted">
                           {index === 0
                             ? "Conflict resolution Â· 2h ago"
                             : index === 1
@@ -790,10 +466,7 @@ function DashboardContent({ role, profile, user }) {
             )}
               </>
             )}
-          </div>
-        </div>
-      </section>
-    </main>
+    </AdminShell>
   );
 }
 
@@ -817,23 +490,21 @@ export default function RoleDashboardPage() {
     ) && !user.emailVerified,
   );
 
+  const [splashDone, setSplashDone] = useState(false);
+
   useEffect(() => {
     if (!loading && (!user || requiresVerification || !profileRole || requestedRole !== profileRole)) {
       router.replace("/login");
     }
   }, [loading, profileRole, requestedRole, requiresVerification, router, user]);
 
-  if (loading) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-slate-100 text-sm text-slate-500">
-        Loading your learning home...
-      </div>
-    );
+  if (loading || !splashDone) {
+    return <LoadingScreen ready={!loading} onFinished={() => setSplashDone(true)} />;
   }
 
   if (!user || requiresVerification || !profileRole || requestedRole !== profileRole) {
     return (
-      <div className="grid min-h-screen place-items-center bg-slate-100 text-sm text-slate-500">
+      <div className="grid min-h-screen place-items-center bg-page text-sm text-muted">
         Redirecting to login...
       </div>
     );
