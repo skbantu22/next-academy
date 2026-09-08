@@ -1,10 +1,16 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useAuth } from "../../../lib/auth-context";
 import { db } from "../../../lib/firebase";
+import StudentManagement from "../../../components/StudentManagement";
+import TeacherAssignment from "../../../components/teacher-assignment/TeacherAssignment";
+import SidebarIcon from "../../../components/dashboard/SidebarIcon";
+import DirectorOverview from "../../../components/dashboard/DirectorOverview";
+import UserManagement from "../../../components/users/UserManagement";
+import TrainingManagement from "../../../components/training/TrainingManagement";
 
 const roleConfig = {
   Student: {
@@ -21,10 +27,10 @@ const roleConfig = {
       "QR Scanner",
     ],
     stats: [
-      ["Active courses", "04", "2 due this week", "🎓"],
-      ["Learning streak", "12", "days", "🔥"],
-      ["Achievements", "08", "earned", "🏆"],
-      ["Attendance", "96%", "this term", "✓"],
+      ["Active courses", "04", "2 due this week", "ðŸŽ“"],
+      ["Learning streak", "12", "days", "ðŸ”¥"],
+      ["Achievements", "08", "earned", "ðŸ†"],
+      ["Attendance", "96%", "this term", "âœ“"],
     ],
   },
   Volunteer: {
@@ -39,10 +45,10 @@ const roleConfig = {
       "Chat",
     ],
     stats: [
-      ["Students supported", "24", "this month", "♙"],
-      ["Hours logged", "18", "this week", "◷"],
-      ["Events joined", "06", "upcoming", "◉"],
-      ["Impact score", "94%", "positive", "✦"],
+      ["Students supported", "24", "this month", "â™™"],
+      ["Hours logged", "18", "this week", "â—·"],
+      ["Events joined", "06", "upcoming", "â—‰"],
+      ["Impact score", "94%", "positive", "âœ¦"],
     ],
   },
   Facilitator: {
@@ -57,10 +63,10 @@ const roleConfig = {
       "Chat",
     ],
     stats: [
-      ["Active cohorts", "06", "in progress", "▦"],
-      ["Sessions hosted", "18", "this month", "◷"],
-      ["Feedback rate", "94%", "positive", "✓"],
-      ["Students reached", "126", "this term", "♙"],
+      ["Active cohorts", "06", "in progress", "â–¦"],
+      ["Sessions hosted", "18", "this month", "â—·"],
+      ["Feedback rate", "94%", "positive", "âœ“"],
+      ["Students reached", "126", "this term", "â™™"],
     ],
   },
   Teacher: {
@@ -84,13 +90,17 @@ const roleConfig = {
     modules: [
       "Dashboard",
       "Students",
-      "Teachers",
+      "Teacher",
       "Training",
-      "Events",
+      "Event",
       "Finance",
       "Documents",
-      "Reports",
-      "Achievements",
+      "Gift",
+      "User",
+      "Chat",
+      "Achievement",
+      "ID Card",
+      "Scan QR Code",
     ],
     stats: [],
   },
@@ -99,57 +109,31 @@ const roleConfig = {
     modules: [
       "Dashboard",
       "Students",
-      "Teachers",
+      "Teacher",
       "Training",
-      "Events",
+      "Event",
       "Finance",
       "Documents",
-      "Gifts",
-      "Users",
+      "Gift",
+      "User",
       "Chat",
-      "Achievements",
-      "ID Cards",
-      "QR Scanner",
-      "Settings",
+      "Achievement",
+      "ID Card",
+      "Scan QR Code",
     ],
     stats: [
-      ["Total users", "684", "↑ 32 this month", "♙"],
+      ["Total users", "684", "â†‘ 32 this month", "â™™"],
       ["Pending reviews", "14", "need attention", "!"],
-      ["System health", "99.9%", "uptime", "✓"],
-      ["Active programs", "50", "across academy", "▦"],
+      ["System health", "99.9%", "uptime", "âœ“"],
+      ["Active programs", "50", "across academy", "â–¦"],
     ],
   },
 };
-
-const iconMap = {
-  Dashboard: "▦",
-  "My Training": "▣",
-  Training: "▣",
-  Students: "♙",
-  Teachers: "♧",
-  Events: "◷",
-  Event: "◷",
-  Attendance: "✓",
-  Achievements: "✦",
-  Certificates: "▤",
-  "ID Card": "▥",
-  "ID Cards": "▥",
-  Chat: "◌",
-  "QR Scanner": "⌗",
-  Finance: "$",
-  Documents: "▧",
-  Reports: "▒",
-  Gifts: "♢",
-  Users: "♧",
-  Settings: "⚙",
-  Activities: "◉",
-};
-
 const teacherUnavailableStats = [
-  ["My students", "—", "No class relationship recorded"],
-  ["Assignments", "—", "No assignment data available"],
-  ["Attendance", "—", "No attendance records available"],
-  ["Class rating", "—", "No rating records available"],
+  ["My students", "â€”", "No class relationship recorded"],
+  ["Assignments", "â€”", "No assignment data available"],
+  ["Attendance", "â€”", "No attendance records available"],
+  ["Class rating", "â€”", "No rating records available"],
 ];
 
 function Brand() {
@@ -196,7 +180,7 @@ function DirectorDashboard({ profile, user }) {
   return (
     <main className="min-h-screen bg-slate-100 text-slate-800 md:flex">
       <aside
-        className={`${mobileOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-40 flex w-72 flex-col bg-slate-950 text-slate-300 shadow-2xl transition-transform duration-300 md:relative md:translate-x-0 md:shadow-none`}
+        className={`${mobileOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-40 flex h-screen w-[280px] flex-col bg-slate-950 text-slate-300 shadow-2xl transition-transform duration-300 md:sticky md:top-0 md:translate-x-0 md:shadow-none`}
       >
         <div className="flex items-center justify-between border-b border-slate-800 p-5">
           <Brand />
@@ -205,7 +189,7 @@ function DirectorDashboard({ profile, user }) {
             className="text-xl text-slate-400 md:hidden"
             aria-label="Close menu"
           >
-            ×
+            Ã—
           </button>
         </div>
         <div className="border-b border-slate-800 px-5 py-4">
@@ -213,7 +197,7 @@ function DirectorDashboard({ profile, user }) {
             Director workspace
           </span>
         </div>
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <nav className="flex-1 overflow-y-auto px-4 py-5">
           {config.modules.map((module) => (
             <button
               key={module}
@@ -221,10 +205,10 @@ function DirectorDashboard({ profile, user }) {
                 setActive(module);
                 setMobileOpen(false);
               }}
-              className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-xs font-semibold transition ${active === module ? "bg-red-600 text-white shadow-lg shadow-red-950/30" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
+              className={`mb-2 flex min-h-12 w-full items-center gap-4 rounded-xl px-4 py-3 text-left text-[15px] font-semibold transition ${active === module ? "bg-red-600 text-white shadow-lg shadow-red-950/30" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
             >
-              <span className="w-5 text-center text-base">
-                {iconMap[module] || "◈"}
+              <span className="grid h-6 w-6 shrink-0 place-items-center">
+                <SidebarIcon name={module} className="h-6 w-6" />
               </span>
               {module}
             </button>
@@ -236,15 +220,15 @@ function DirectorDashboard({ profile, user }) {
               {initials}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-white">{name}</p>
-              <p className="truncate text-xs text-slate-400">{user.email}</p>
+              <p className="truncate text-sm font-medium text-white">DIRECTOR</p>
+              <p className="truncate text-xs text-slate-400">director@learninghome.org</p>
             </div>
           </div>
           <button
             onClick={logout}
             className="mt-4 w-full rounded-lg bg-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-300 hover:text-red-300"
           >
-            ↪ Sign Out Session
+            â†ª Sign Out Session
           </button>
         </div>
       </aside>
@@ -263,7 +247,7 @@ function DirectorDashboard({ profile, user }) {
               className="text-xl text-slate-600 md:hidden"
               aria-label="Open menu"
             >
-              ☰
+              â˜°
             </button>
             <div>
               <h1 className="text-lg font-bold text-slate-800">
@@ -286,7 +270,7 @@ function DirectorDashboard({ profile, user }) {
                 <b className="block text-xs text-slate-800">{name}</b>
                 <small className="text-[10px] text-slate-500">Director</small>
               </span>
-              <span className="text-slate-400">⌄</span>
+              <span className="text-slate-400">âŒ„</span>
             </button>
             {profileOpen && (
               <div className="absolute right-0 top-12 z-30 w-52 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl">
@@ -308,34 +292,22 @@ function DirectorDashboard({ profile, user }) {
         </header>
         <div className="p-4 md:p-6 lg:p-8">
           <div className="mx-auto max-w-7xl space-y-6">
-            <section className="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-red-950 p-6 text-white shadow-xl md:p-8">
-              <span className="rounded-full bg-red-500/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-red-200">
-                Director workspace
-              </span>
-              <div className="mt-6 max-w-2xl">
-                <h2 className="text-3xl font-black tracking-tight md:text-5xl">
-                  Lead with a clear view of what matters.
-                </h2>
-                <p className="mt-4 text-sm leading-6 text-slate-300">
-                  {config.greeting}
-                </p>
-              </div>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <button
-                  onClick={() => setActive("Students")}
-                  className="rounded-xl bg-red-600 px-4 py-3 text-xs font-bold text-white hover:bg-red-500"
-                >
-                  Open students
-                </button>
-                <button
-                  onClick={() => setActive("Reports")}
-                  className="rounded-xl border border-white/20 px-4 py-3 text-xs font-bold text-white hover:bg-white/10"
-                >
-                  Open reports
-                </button>
-              </div>
-            </section>
-            {unavailable ? (
+            {active === "Dashboard" && (
+              <DirectorOverview
+                greeting={config.greeting}
+                onOpenStudents={() => setActive("Students")}
+                onOpenReports={() => setActive("Reports")}
+              />
+            )}
+            {active === "Students" ? (
+              <StudentManagement role="Director" />
+            ) : active === "User" ? (
+              <UserManagement role="Director" currentUserId={user.uid} />
+            ) : active === "Training" ? (
+              <TrainingManagement role="Director" />
+            ) : active === "Teacher" ? (
+              <TeacherAssignment />
+            ) : unavailable ? (
               <EmptyDataPanel
                 title={`${active} module`}
                 message="This Director module does not have an implemented page or permitted Firestore data source yet."
@@ -414,7 +386,7 @@ function DirectorDashboard({ profile, user }) {
                         className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-left transition hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-50"
                       >
                         <span className="text-xl text-red-600">
-                          {iconMap[module] || "◈"}
+                          <SidebarIcon name={module} className="h-6 w-6" />
                         </span>
                         <b className="mt-3 block text-xs">{module}</b>
                         <small className="mt-1 block text-[10px] text-slate-500">
@@ -452,6 +424,10 @@ function DashboardContent({ role, profile, user }) {
   const initials = name.slice(0, 2).toUpperCase();
 
   useEffect(() => {
+    if (role === "Teacher") router.replace("/teacher/dashboard");
+  }, [role, router]);
+
+  useEffect(() => {
     if (role !== "Teacher" || !db || !user?.uid) return undefined;
     return onSnapshot(
       doc(db, "users", user.uid),
@@ -468,6 +444,14 @@ function DashboardContent({ role, profile, user }) {
   if (role === "Director")
     return <DirectorDashboard profile={profile} user={user} />;
 
+  if (role === "Teacher") {
+    return (
+      <div className="grid min-h-screen place-items-center bg-slate-100 text-sm text-slate-500">
+        Opening your teacher workspace...
+      </div>
+    );
+  }
+
   function selectModule(module) {
     setActive(module);
     setMobileOpen(false);
@@ -476,7 +460,7 @@ function DashboardContent({ role, profile, user }) {
   return (
     <main className="min-h-screen bg-slate-100 text-slate-800 md:flex">
       <aside
-        className={`${mobileOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-40 flex w-72 flex-col bg-slate-900 text-slate-300 shadow-2xl transition-transform duration-300 md:relative md:translate-x-0 md:shadow-none`}
+        className={`${mobileOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-40 flex h-screen w-[280px] flex-col bg-slate-900 text-slate-300 shadow-2xl transition-transform duration-300 md:sticky md:top-0 md:translate-x-0 md:shadow-none`}
       >
         <div className="flex items-center justify-between border-b border-slate-800 p-5">
           <Brand />
@@ -485,7 +469,7 @@ function DashboardContent({ role, profile, user }) {
             className="text-xl text-slate-400 md:hidden"
             aria-label="Close menu"
           >
-            ×
+            Ã—
           </button>
         </div>
         <div className="border-b border-slate-800 px-5 py-4">
@@ -493,15 +477,15 @@ function DashboardContent({ role, profile, user }) {
             {role} workspace
           </span>
         </div>
-        <nav className="custom-scrollbar flex-1 overflow-y-auto px-3 py-4">
+        <nav className="custom-scrollbar flex-1 overflow-y-auto px-4 py-5">
           {config.modules.map((module) => (
             <button
               key={module}
               onClick={() => selectModule(module)}
-              className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-xs font-semibold transition ${active === module ? "bg-red-600 text-white shadow-lg shadow-red-950/30" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
+              className={`mb-2 flex min-h-12 w-full items-center gap-4 rounded-xl px-4 py-3 text-left text-[15px] font-semibold transition ${active === module ? "bg-red-600 text-white shadow-lg shadow-red-950/30" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
             >
-              <span className="w-5 text-center text-base">
-                {iconMap[module] || "◈"}
+              <span className="grid h-6 w-6 shrink-0 place-items-center">
+                <SidebarIcon name={module} className="h-6 w-6" />
               </span>
               {module}
               {module === "Chat" && (
@@ -526,7 +510,7 @@ function DashboardContent({ role, profile, user }) {
             onClick={logout}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-300 transition hover:bg-red-600/20 hover:text-red-300"
           >
-            ↪ Sign Out Session
+            â†ª Sign Out Session
           </button>
         </div>
       </aside>
@@ -546,7 +530,7 @@ function DashboardContent({ role, profile, user }) {
               className="text-xl text-slate-600 md:hidden"
               aria-label="Open menu"
             >
-              ☰
+              â˜°
             </button>
             <h1 className="text-lg font-bold text-slate-800 md:text-xl">
               {active === "Dashboard" ? `${role} Dashboard` : active}
@@ -558,14 +542,14 @@ function DashboardContent({ role, profile, user }) {
                 className="w-52 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 pl-9 text-xs outline-none focus:ring-2 focus:ring-red-500"
                 placeholder="Search records, students..."
               />
-              <span className="absolute left-3 top-2.5 text-slate-400">⌕</span>
+              <span className="absolute left-3 top-2.5 text-slate-400">âŒ•</span>
             </div>
             <button
               onClick={() => selectModule("Chat")}
               className="relative rounded-xl p-2.5 text-slate-600 hover:bg-slate-100"
               aria-label="Open chat"
             >
-              ◌
+              â—Œ
               <i className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
             </button>
             <button
@@ -579,7 +563,7 @@ function DashboardContent({ role, profile, user }) {
                 <b className="block text-xs text-slate-800">{name}</b>
                 <small className="text-[10px] text-slate-500">{role}</small>
               </span>
-              <span className="text-slate-400">⌄</span>
+              <span className="text-slate-400">âŒ„</span>
             </button>
             {profileOpen && (
               <div className="absolute right-4 top-14 z-30 w-52 rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl">
@@ -601,10 +585,21 @@ function DashboardContent({ role, profile, user }) {
         </header>
         <div className="flex-1 p-4 md:p-6 lg:p-8">
           <div className="mx-auto max-w-7xl space-y-6">
+            {role === "Admin" && active === "Students" ? (
+              <StudentManagement role="Admin" />
+            ) : role === "Admin" && active === "User" ? (
+              <UserManagement role="Admin" currentUserId={user.uid} />
+            ) : (active === "Training" || active === "My Training") ? (
+              <TrainingManagement role={role} />
+            ) : role === "Admin" && active === "Teacher" ? (
+              <TeacherAssignment />
+            ) : (
+              <>
+            {active === "Dashboard" && (
             <section className="flex flex-col justify-between gap-6 rounded-3xl bg-gradient-to-r from-red-600 via-red-700 to-red-900 p-6 text-white shadow-xl md:flex-row md:items-center md:p-8">
               <div>
                 <span className="rounded-full bg-white/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider">
-                  Enterprise workspace · {role}
+                  Enterprise workspace Â· {role}
                 </span>
                 <h2 className="mt-3 text-3xl font-extrabold">
                   Welcome, {name}
@@ -634,6 +629,7 @@ function DashboardContent({ role, profile, user }) {
                 </button>
               </div>
             </section>
+            )}
             <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {(role === "Teacher"
                 ? teacherUnavailableStats
@@ -657,7 +653,7 @@ function DashboardContent({ role, profile, user }) {
                     </span>
                   </div>
                   <div className="grid h-12 w-12 place-items-center rounded-2xl bg-red-50 text-xl text-red-600 shadow-inner">
-                    {icon || "—"}
+                    {icon || "â€”"}
                   </div>
                 </article>
               ))}
@@ -706,7 +702,7 @@ function DashboardContent({ role, profile, user }) {
                     <span
                       className={`mx-auto grid h-11 w-11 place-items-center rounded-xl bg-white text-lg shadow-sm transition group-hover:bg-red-600 group-hover:text-white ${active === module ? "bg-red-600 text-white" : "text-slate-700"}`}
                     >
-                      {iconMap[module] || "◈"}
+                      <SidebarIcon name={module} className="h-6 w-6" />
                     </span>
                     <span className="mt-3 block text-[11px] font-bold text-slate-700">
                       {module}
@@ -734,7 +730,7 @@ function DashboardContent({ role, profile, user }) {
                       Upcoming schedule
                     </h2>
                     <button className="text-xs font-bold text-red-600">
-                      View all →
+                      View all â†’
                     </button>
                   </div>
                   {[
@@ -753,11 +749,11 @@ function DashboardContent({ role, profile, user }) {
                         <b className="block text-xs text-slate-800">{item}</b>
                         <span className="text-[10px] text-slate-500">
                           {index === 0
-                            ? "Today · 14:00 · Room A"
-                            : "This week · Next Academy"}
+                            ? "Today Â· 14:00 Â· Room A"
+                            : "This week Â· Next Academy"}
                         </span>
                       </div>
-                      <span className="ml-auto text-slate-400">→</span>
+                      <span className="ml-auto text-slate-400">â†’</span>
                     </div>
                   ))}
                 </div>
@@ -773,13 +769,13 @@ function DashboardContent({ role, profile, user }) {
                       key={item}
                     >
                       <span className="grid h-8 w-8 place-items-center rounded-full bg-emerald-50 text-sm text-emerald-600">
-                        {index === 0 ? "✓" : index === 1 ? "✦" : "↗"}
+                        {index === 0 ? "âœ“" : index === 1 ? "âœ¦" : "â†—"}
                       </span>
                       <div>
                         <b className="block text-xs text-slate-800">{item}</b>
                         <span className="text-[10px] text-slate-500">
                           {index === 0
-                            ? "Conflict resolution · 2h ago"
+                            ? "Conflict resolution Â· 2h ago"
                             : index === 1
                               ? "Thoughtful collaborator"
                               : "From your academy mentor"}
@@ -789,6 +785,8 @@ function DashboardContent({ role, profile, user }) {
                   ))}
                 </div>
               </section>
+            )}
+              </>
             )}
           </div>
         </div>
@@ -808,7 +806,8 @@ export default function RoleDashboardPage() {
     ? roleKey.charAt(0).toUpperCase() + roleKey.slice(1).toLowerCase()
     : "Student";
 
-  const validRole = roleConfig[formattedRole] ? formattedRole : "Student";
+  const requestedRole = roleConfig[formattedRole] ? formattedRole : "Student";
+  const profileRole = roleConfig[profile?.role] ? profile.role : null;
 
   const requiresVerification = Boolean(
     user?.providerData?.some(
@@ -817,10 +816,10 @@ export default function RoleDashboardPage() {
   );
 
   useEffect(() => {
-    if (!loading && (!user || requiresVerification)) {
+    if (!loading && (!user || requiresVerification || !profileRole || requestedRole !== profileRole)) {
       router.replace("/login");
     }
-  }, [loading, requiresVerification, router, user]);
+  }, [loading, profileRole, requestedRole, requiresVerification, router, user]);
 
   if (loading) {
     return (
@@ -830,7 +829,7 @@ export default function RoleDashboardPage() {
     );
   }
 
-  if (!user || requiresVerification) {
+  if (!user || requiresVerification || !profileRole || requestedRole !== profileRole) {
     return (
       <div className="grid min-h-screen place-items-center bg-slate-100 text-sm text-slate-500">
         Redirecting to login...
@@ -839,6 +838,15 @@ export default function RoleDashboardPage() {
   }
 
   return (
-    <DashboardContent role={validRole} profile={profile || {}} user={user} />
+    <DashboardContent role={profileRole} profile={profile || {}} user={user} />
   );
 }
+
+
+
+
+
+
+
+
+

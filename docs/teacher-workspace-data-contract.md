@@ -42,3 +42,8 @@ Teacher pages use `lib/teacher-data.js` for scoped realtime subscriptions and wr
 ## Required indexes
 
 Create composite indexes in Firebase Console when Firestore reports them for production queries, especially `teacherId + createdAt`, `teacherId + date`, `classId + date`, and `participantIds + updatedAt`.
+
+
+## Enrollment-ID migration required for student content access
+
+Firestore rules cannot discover an arbitrary enrollment document while authorizing a course document. Create or migrate each active enrollment using the existing enrollments fields and the deterministic ID {courseId}_{studentId}. The document must contain matching courseId, classId, studentId, and a status other than withdrawn; its class must belong to that course. Student clients must first query their own enrollment documents, then fetch each known course/module/lesson by ID. They must not query the whole courses collection and expect rules to filter it.

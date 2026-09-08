@@ -5,90 +5,94 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function role(value) { return signedIn() && profile().role == value; }
-    function admin() { return role('Admin'); }
+    function admin() { return role('Admin') || role('Director'); }
     function teacher() { return role('Teacher'); }
-    function ownsClass(classId) { return teacher() && get(/databases/$(database)/documents/classes/$(classId)).data.teacherIds.hasAny([request.auth.uid]); }
-    function ownsCourse(courseId) { return teacher() && get(/databases/$(database)/documents/courses/$(courseId)).data.teacherIds.hasAny([request.auth.uid]); }
-    function ownsTeacherField() { return teacher() && resource.data.teacherId == request.auth.uid; }
-    function createsTeacherField() { return teacher() && request.resource.data.teacherId == request.auth.uid; }
+    function ownsClass(classId) { return teacher() && exists(/databases/$(database)/documents/classes/$(classId)) && get(/databases/$(database)/documents/classes/$(classId)).data.teacherIds.hasAny([request.auth.uid]); }
+    function ownsCourse(courseId) { return teacher() && exists(/databases/$(database)/documents/courses/$(courseId)) && get(/databases/$(database)/documents/courses/$(courseId)).data.teacherIds.hasAny([request.auth.uid]); }
+    function assignedStudent(studentId) { return teacher() && exists(/databases/$(database)/documents/users/$(studentId)) && get(/databases/$(database)/documents/users/$(studentId)).data.role == 'Student' && get(/databases/$(database)/documents/users/$(studentId)).data.teacherIds.hasAny([request.auth.uid]); }
+    // Requires enrollments/{courseId}_{studentId}; see the data-contract migration note.
+    function enrolledInCourse(courseId) { return signedIn() && exists(/databases/$(database)/documents/enrollments/$(courseId + '_' + request.auth.uid)) && get(/databases/$(database)/documents/enrollments/$(courseId + '_' + request.auth.uid)).data.studentId == request.auth.uid && get(/databases/$(database)/documents/enrollments/$(courseId + '_' + request.auth.uid)).data.status != 'withdrawn'; }
+    function enrolledInClass(classId) { return signedIn() && exists(/databases/$(database)/documents/classes/$(classId)) && enrolledInCourse(get(/databases/$(database)/documents/classes/$(classId)).data.courseId) && get(/databases/$(database)/documents/enrollments/$(get(/databases/$(database)/documents/classes/$(classId)).data.courseId + '_' + request.auth.uid)).data.classId == classId; }
 
     match /users/{userId} {
-      allow create: if signedIn() && request.auth.uid == userId && request.resource.data.uid == userId && request.resource.data.role == 'Student';
+      allow create: if admin() || (signedIn() && request.auth.uid == userId && request.resource.data.uid == userId && request.resource.data.role == 'Student');
       allow read: if signedIn() && (request.auth.uid == userId || admin() || (resource.data.role == 'Student' && resource.data.teacherIds.hasAny([request.auth.uid])));
-      allow update: if admin() || (signedIn() && request.auth.uid == userId && request.resource.data.uid == resource.data.uid && request.resource.data.role == resource.data.role);
+      allow update: if admin() || (signedIn() && request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'role', 'teacherIds', 'active', 'qrVersion']));
       allow delete: if admin();
     }
-
     match /classes/{classId} {
-      allow read: if admin() || (teacher() && resource.data.teacherIds.hasAny([request.auth.uid]));
-      allow create: if admin() || (teacher() && request.resource.data.teacherIds.hasAny([request.auth.uid]));
-      allow update, delete: if admin() || (teacher() && resource.data.teacherIds.hasAny([request.auth.uid]));
+      allow read: if admin() || (teacher() && resource.data.teacherIds.hasAny([request.auth.uid])) || enrolledInClass(classId);
+      allow create: if admin() || (teacher() && request.resource.data.teacherIds.hasOnly([request.auth.uid]) && ownsCourse(request.resource.data.courseId));
+      allow update: if admin() || (ownsClass(classId) && request.resource.data.teacherIds == resource.data.teacherIds && request.resource.data.courseId == resource.data.courseId);
+      allow delete: if admin() || ownsClass(classId);
     }
-
     match /enrollments/{enrollmentId} {
-      allow read: if admin() || (teacher() && ownsClass(resource.data.classId)) || (signedIn() && resource.data.studentId == request.auth.uid);
-      allow create, update, delete: if admin() || (teacher() && ownsClass(request.resource.data.classId));
+      allow read: if admin() || ownsClass(resource.data.classId) || (signedIn() && resource.data.studentId == request.auth.uid);
+      allow create: if admin() || (teacher() && ownsClass(request.resource.data.classId) && ownsCourse(request.resource.data.courseId) && get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.courseId == request.resource.data.courseId && enrollmentId == request.resource.data.courseId + '_' + request.resource.data.studentId);
+      allow update: if admin() || (ownsClass(resource.data.classId) && ownsClass(request.resource.data.classId) && resource.data.studentId == request.resource.data.studentId && resource.data.courseId == request.resource.data.courseId && resource.data.classId == request.resource.data.classId);
+      allow delete: if admin() || ownsClass(resource.data.classId);
     }
-
     match /courses/{courseId} {
-      allow read: if admin() || (teacher() && resource.data.teacherIds.hasAny([request.auth.uid]));
-      allow create: if admin() || (teacher() && request.resource.data.teacherIds.hasAny([request.auth.uid]));
-      allow update, delete: if admin() || (teacher() && resource.data.teacherIds.hasAny([request.auth.uid]));
+      allow read: if admin() || (teacher() && resource.data.teacherIds.hasAny([request.auth.uid])) || enrolledInCourse(courseId);
+      allow create: if admin() || (teacher() && request.resource.data.teacherIds.hasOnly([request.auth.uid]));
+      allow update: if admin() || (ownsCourse(courseId) && request.resource.data.teacherIds == resource.data.teacherIds);
+      allow delete: if admin() || ownsCourse(courseId);
       match /modules/{moduleId} {
-        allow read, write: if admin() || ownsCourse(courseId);
-        match /lessons/{lessonId} {
-          allow read, write: if admin() || ownsCourse(courseId);
-        }
+        allow read: if admin() || ownsCourse(courseId) || enrolledInCourse(courseId);
+        allow write: if admin() || ownsCourse(courseId);
+        match /lessons/{lessonId} { allow read: if admin() || ownsCourse(courseId) || enrolledInCourse(courseId); allow write: if admin() || ownsCourse(courseId); }
       }
     }
-
     match /assignments/{assignmentId} {
-      allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (teacher() && ownsClass(resource.data.classId));
-      allow create: if admin() || createsTeacherField();
-      allow update, delete: if admin() || ownsTeacherField();
+      allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || enrolledInClass(resource.data.classId);
+      allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && ownsClass(request.resource.data.classId) && ownsCourse(request.resource.data.courseId));
+      allow update: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId && request.resource.data.classId == resource.data.classId && request.resource.data.courseId == resource.data.courseId);
+      allow delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
     }
     match /submissions/{submissionId} {
       allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid);
-      allow create: if admin() || createsTeacherField() || (signedIn() && request.resource.data.studentId == request.auth.uid);
-      allow update, delete: if admin() || ownsTeacherField() || (signedIn() && resource.data.studentId == request.auth.uid);
+      allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && ownsClass(request.resource.data.classId)) || (signedIn() && request.resource.data.studentId == request.auth.uid && exists(/databases/$(database)/documents/assignments/$(request.resource.data.assignmentId)) && get(/databases/$(database)/documents/assignments/$(request.resource.data.assignmentId)).data.classId == request.resource.data.classId && enrolledInClass(request.resource.data.classId));
+      allow update: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid && request.resource.data.studentId == resource.data.studentId && request.resource.data.assignmentId == resource.data.assignmentId && request.resource.data.score == resource.data.score);
+      allow delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid);
     }
     match /attendance/{attendanceId} {
       allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid);
-      allow create: if admin() || createsTeacherField();
-      allow update, delete: if admin() || ownsTeacherField();
+      allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && ownsClass(request.resource.data.classId) && assignedStudent(request.resource.data.studentId));
+      allow update: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId && request.resource.data.classId == resource.data.classId && request.resource.data.studentId == resource.data.studentId);
+      allow delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
     }
     match /events/{eventId} {
-      allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (teacher() && ownsClass(resource.data.classId));
-      allow create: if admin() || createsTeacherField();
-      allow update, delete: if admin() || ownsTeacherField();
+      allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.classId != '' && enrolledInClass(resource.data.classId));
+      allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && (request.resource.data.classId == '' || ownsClass(request.resource.data.classId)));
+      allow update: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId && (request.resource.data.classId == '' || ownsClass(request.resource.data.classId)));
+      allow delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
     }
-    match /achievements/{achievementId} {
-      allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid);
-      allow create: if admin() || createsTeacherField();
-      allow update, delete: if admin() || ownsTeacherField();
-    }
-    match /certificates/{certificateId} {
-      allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid);
-      allow create: if admin() || createsTeacherField();
-      allow update, delete: if admin() || ownsTeacherField();
-    }
+    match /achievements/{achievementId} { allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid); allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && assignedStudent(request.resource.data.studentId)); allow update, delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId); }
+    match /certificates/{certificateId} { allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid); allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && assignedStudent(request.resource.data.studentId)); allow update, delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId); }
     match /conversations/{conversationId} {
-      allow read, write: if admin() || (signedIn() && (resource.data.teacherId == request.auth.uid || request.auth.uid in resource.data.participantIds || request.resource.data.teacherId == request.auth.uid));
-      match /messages/{messageId} {
-        allow read, write: if admin() || (signedIn() && (get(/databases/$(database)/documents/conversations/$(conversationId)).data.teacherId == request.auth.uid || request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds));
-      }
+      allow read: if admin() || (signedIn() && request.auth.uid in resource.data.participantIds);
+      allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && assignedStudent(request.resource.data.studentId) && request.auth.uid in request.resource.data.participantIds) || (role('Student') && request.resource.data.studentId == request.auth.uid && request.auth.uid in request.resource.data.participantIds && profile().teacherIds.hasAny([request.resource.data.teacherId]));
+      allow update: if admin() || (signedIn() && request.auth.uid in resource.data.participantIds && request.resource.data.participantIds == resource.data.participantIds && request.resource.data.teacherId == resource.data.teacherId && request.resource.data.studentId == resource.data.studentId);
+      allow delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
+      match /messages/{messageId} { allow read: if admin() || (signedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds); allow create: if admin() || (signedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds && request.resource.data.senderId == request.auth.uid && request.resource.data.receiverId in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds); allow update, delete: if admin() || (signedIn() && resource.data.senderId == request.auth.uid); }
     }
-    match /notifications/{notificationId} {
-      allow read, update: if admin() || (signedIn() && resource.data.userId == request.auth.uid);
-      allow create: if admin() || (signedIn() && request.resource.data.userId != null);
-      allow delete: if admin() || (signedIn() && resource.data.userId == request.auth.uid);
+    match /documents/{documentId} {
+      allow read: if admin() || (teacher() && (resource.data.teacherId == request.auth.uid || ('teacherIds' in resource.data && resource.data.teacherIds.hasAny([request.auth.uid]))));
+      allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid);
+      allow update, delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
     }
-    match /activities/{activityId} {
-      allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.actorId == request.auth.uid);
-      allow create: if admin() || (signedIn() && request.resource.data.actorId == request.auth.uid && request.resource.data.teacherId != null);
-      allow update, delete: if admin() || (signedIn() && resource.data.actorId == request.auth.uid);
+    match /promotionLinks/{linkId} {
+      allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
+      allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && ownsCourse(request.resource.data.courseId));
+      allow update: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId && request.resource.data.courseId == resource.data.courseId);
+      allow delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
     }
-
+    match /promotionLeads/{leadId} {
+      allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
+      allow create, update, delete: if admin();
+    }
+    match /notifications/{notificationId} { allow read, update, delete: if admin() || (signedIn() && resource.data.userId == request.auth.uid); allow create: if admin() || (signedIn() && request.resource.data.userId == request.auth.uid) || (teacher() && assignedStudent(request.resource.data.userId)); }
+    match /activities/{activityId} { allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.actorId == request.auth.uid); allow create: if admin() || (teacher() && request.resource.data.actorId == request.auth.uid && request.resource.data.teacherId == request.auth.uid); allow update, delete: if admin() || (teacher() && resource.data.actorId == request.auth.uid && resource.data.teacherId == request.auth.uid); }
     match /{document=**} { allow read, write: if false; }
   }
 }

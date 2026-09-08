@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import Link from "next/link";
 import TeacherGate from "./TeacherGate";
@@ -10,33 +10,63 @@ import {
   createTeacherCertificate,
   createTeacherEvent,
   deleteTeacherEvent,
+  markNotificationRead,
   saveAttendance,
   sendTeacherMessage,
   subscribeConversationMessages,
   subscribeTeacherDashboard,
   updateTeacherEvent,
+  updateTeacherProfile,
 } from "../lib/teacher-data";
 import { db } from "../lib/firebase";
+import TrainingManagement from "./training/TrainingManagement";
+import WorkspaceShell from "./dashboard/WorkspaceShell";
+import IdCardPrint from "./teacher/IdCardPrint";
+import { scanAttendanceQr } from "../lib/services/qr-service";
+import {
+  deleteTeacherDocument,
+  subscribeTeacherDocuments,
+  uploadTeacherDocument,
+} from "../lib/teacher-documents";
+import {
+  createPromotionLink,
+  subscribeTeacherLeads,
+  subscribeTeacherPromotionLinks,
+} from "../lib/teacher-promote";
+import QRCode from "qrcode";
 
+// Sidebar nav is intentionally a fixed 9-item list per product spec — do not
+// add Promote/Notifications/etc. here. Their pages still exist and remain
+// reachable by direct URL; they're just not linked from the Teacher sidebar.
 const links = [
   "Dashboard",
   "Students",
   "Training",
-  "Attendance",
-  "Events",
-  "Achievements",
-  "Certificates",
+  "Event",
+  "Documents",
   "Chat",
+  "Achievement",
+  "ID Card",
+  "Scan QR Code",
 ];
 const paths = {
   Dashboard: "/teacher/dashboard",
   Students: "/teacher/students",
   Training: "/teacher/training",
   Attendance: "/teacher/attendance",
-  Events: "/teacher/events",
-  Achievements: "/teacher/achievements",
+  Event: "/teacher/events",
+  Achievement: "/teacher/achievements",
   Certificates: "/teacher/certificates",
   Chat: "/teacher/chat",
+  Assignments: "/teacher/assignments",
+  Submissions: "/teacher/submissions",
+  Results: "/teacher/results",
+  Notifications: "/teacher/notifications",
+  Profile: "/teacher/profile",
+  "ID Card": "/teacher/id-card",
+  "Scan QR Code": "/teacher/scan-qr",
+  Documents: "/teacher/documents",
+  Promote: "/teacher/promote",
 };
 const blank = {
   classes: [],
@@ -50,6 +80,7 @@ const blank = {
   achievements: [],
   certificates: [],
   conversations: [],
+  notifications: [],
 };
 
 function Empty({ children }) {
@@ -84,95 +115,38 @@ function Field({ label, ...props }) {
 
 function TeacherShell({ active, children, unread }) {
   const { user, profile, logout } = useAuth();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const name =
     profile?.displayName ||
     user?.displayName ||
     user?.email?.split("@")[0] ||
     "Teacher";
+  const initials = name.slice(0, 2).toUpperCase();
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-800 md:flex">
-      <aside
-        className={`${mobileOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-40 flex w-72 flex-col bg-slate-900 text-slate-300 shadow-2xl transition-transform md:relative md:translate-x-0 md:shadow-none`}
-      >
-        <div className="border-b border-slate-800 p-5">
-          <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-red-600 text-xl font-bold text-white">
-              N
-            </span>
-            <div>
-              <b className="block text-sm text-white">Next Academy</b>
-              <small className="text-[9px] uppercase tracking-widest text-red-300">
-                Teacher workspace
-              </small>
-            </div>
-            <button
-              onClick={() => setMobileOpen(false)}
-              className="ml-auto text-xl md:hidden"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-        <nav className="custom-scrollbar flex-1 overflow-y-auto px-3 py-4">
-          {links.map((link) => (
-            <Link
-              key={link}
-              href={paths[link]}
-              onClick={() => setMobileOpen(false)}
-              className={`mb-1 flex items-center gap-3 rounded-xl px-3 py-3 text-xs font-semibold transition ${active === link ? "bg-red-600 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
-            >
-              <span className="w-5 text-center">
-                {link === "Chat" ? "◌" : link === "Dashboard" ? "▦" : "◈"}
-              </span>
-              {link}
-              {link === "Chat" && unread > 0 && (
-                <b className="ml-auto rounded-full bg-red-400 px-1.5 py-0.5 text-[9px]">
-                  {unread}
-                </b>
-              )}
-            </Link>
-          ))}
-        </nav>
-        <div className="border-t border-slate-800 p-4">
-          <p className="truncate text-sm font-medium text-white">{name}</p>
-          <p className="truncate text-xs text-slate-400">{user?.email}</p>
-          <button
-            onClick={logout}
-            className="mt-4 w-full rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-300 hover:text-red-300"
-          >
-            ↪ Sign Out Session
-          </button>
-        </div>
-      </aside>
-      {mobileOpen && (
-        <button
-          onClick={() => setMobileOpen(false)}
-          className="fixed inset-0 z-30 bg-slate-950/60 md:hidden"
-          aria-label="Close navigation"
-        />
-      )}
-      <section className="min-w-0 flex-1">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm md:px-6">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="text-xl md:hidden"
-              aria-label="Open navigation"
-            >
-              ☰
-            </button>
-            <h1 className="text-lg font-bold">{active}</h1>
-          </div>
-          <span className="hidden text-xs text-slate-500 sm:block">
-            {profile?.role} · {name}
-          </span>
-        </header>
-        <div className="p-4 md:p-6 lg:p-8">
-          <div className="mx-auto max-w-7xl">{children}</div>
-        </div>
-      </section>
-    </main>
+    <WorkspaceShell
+      roleLabel="Teacher workspace"
+      modules={links}
+      active={active}
+      getHref={(module) => paths[module]}
+      renderBadge={(module) =>
+        module === "Chat" && unread > 0 ? (
+          <b className="ml-auto rounded-full bg-red-400 px-1.5 py-0.5 text-[9px] text-white">
+            {unread}
+          </b>
+        ) : null
+      }
+      name={name}
+      initials={initials}
+      footerName="TEACHER"
+      footerEmail={user?.email}
+      profileRoleLabel="Teacher"
+      profileDescription="Authenticated Teacher profile"
+      userEmail={user?.email}
+      headerTitle={active === "Dashboard" ? "Teacher Dashboard" : active}
+      headerSubtitle="Classroom overview"
+      onLogout={logout}
+    >
+      {children}
+    </WorkspaceShell>
   );
 }
 
@@ -200,10 +174,10 @@ function DashboardView({ data }) {
           Teacher workspace
         </span>
         <h2 className="mt-3 text-3xl font-extrabold">
-          Your classroom at a glance
+          Teacher Dashboard
         </h2>
         <p className="mt-2 text-xs text-red-100">
-          Live data from classes, submissions, attendance, and teacher activity.
+          Manage your courses, classes, students, and teaching activities.
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -311,8 +285,13 @@ function StudentsView({ data }) {
                     <td className="p-3">
                       {student.active === false ? "Inactive" : "Active"}
                     </td>
-                    <td className="p-3 text-slate-500">
-                      Teacher-scoped profile
+                    <td className="p-3">
+                      <Link
+                        href={`/teacher/students/${student.id}`}
+                        className="font-semibold text-red-600 hover:underline"
+                      >
+                        View profile →
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -564,23 +543,51 @@ function EventsView({ data, teacherId }) {
   );
 }
 
+function StudentPicker({ students, value, onChange }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+    >
+      <option value="">Select student</option>
+      {students.map((student) => (
+        <option key={student.id} value={student.id}>
+          {student.displayName || student.email || student.id}
+        </option>
+      ))}
+    </select>
+  );
+}
+function studentLabel(students, studentId) {
+  const student = students.find((item) => item.id === studentId);
+  return student?.displayName || student?.email || studentId || "Student not linked";
+}
 function AchievementsView({ data, teacherId }) {
   const [title, setTitle] = useState("");
+  const [studentId, setStudentId] = useState("");
   async function create() {
-    if (!title) return;
+    if (!title || !studentId) return;
+    const student = data.students.find((item) => item.id === studentId);
     await createTeacherAchievement(teacherId, {
       title,
       description: "",
-      studentId: "",
-      classId: "",
+      studentId,
+      classId: student?.classId || "",
     });
     setTitle("");
+    setStudentId("");
   }
   return (
     <Panel
       title="Student achievements"
       action={
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <StudentPicker
+            students={data.students}
+            value={studentId}
+            onChange={setStudentId}
+          />
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -589,7 +596,8 @@ function AchievementsView({ data, teacherId }) {
           />
           <button
             onClick={create}
-            className="rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white"
+            disabled={!title || !studentId}
+            className="rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
           >
             Award
           </button>
@@ -601,7 +609,7 @@ function AchievementsView({ data, teacherId }) {
           <div key={item.id} className="border-b border-slate-100 py-3">
             <b>{item.title}</b>
             <span className="ml-3 text-xs text-slate-500">
-              {item.studentId || "Student not linked"}
+              {studentLabel(data.students, item.studentId)}
             </span>
           </div>
         ))
@@ -613,21 +621,29 @@ function AchievementsView({ data, teacherId }) {
 }
 function CertificatesView({ data, teacherId }) {
   const [title, setTitle] = useState("");
+  const [studentId, setStudentId] = useState("");
   async function create() {
-    if (!title) return;
+    if (!title || !studentId) return;
+    const student = data.students.find((item) => item.id === studentId);
     await createTeacherCertificate(teacherId, {
       title,
-      studentId: "",
-      courseId: "",
-      classId: "",
+      studentId,
+      courseId: student?.courseId || "",
+      classId: student?.classId || "",
     });
     setTitle("");
+    setStudentId("");
   }
   return (
     <Panel
       title="Certificates"
       action={
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <StudentPicker
+            students={data.students}
+            value={studentId}
+            onChange={setStudentId}
+          />
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -636,7 +652,8 @@ function CertificatesView({ data, teacherId }) {
           />
           <button
             onClick={create}
-            className="rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white"
+            disabled={!title || !studentId}
+            className="rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
           >
             Issue
           </button>
@@ -648,7 +665,7 @@ function CertificatesView({ data, teacherId }) {
           <div key={item.id} className="border-b border-slate-100 py-3">
             <b>{item.title}</b>
             <span className="ml-3 text-xs text-slate-500">
-              {item.certificateId || item.id} · {item.status}
+              {studentLabel(data.students, item.studentId)} · {item.certificateId || item.id} · {item.status}
             </span>
           </div>
         ))
@@ -736,13 +753,455 @@ function ChatView({ data, teacherId }) {
   );
 }
 
+function ScopedRecordsView({ title, records, empty }) {
+  return <Panel title={title}>{records.length ? records.map((item) => <div key={item.id} className="border-b border-slate-100 py-3 last:border-0"><b className="block text-sm">{item.title || item.name || item.id}</b><span className="text-xs text-slate-500">{item.status || "No status"}</span></div>) : <Empty>{empty}</Empty>}</Panel>;
+}
+
+function NotificationsView({ data }) {
+  const items = [...data.notifications].sort((a, b) =>
+    String(b.createdAt?.toMillis?.() || "").localeCompare(
+      String(a.createdAt?.toMillis?.() || ""),
+    ),
+  );
+  return (
+    <Panel title="Notifications">
+      {items.length ? (
+        items.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => !item.readAt && markNotificationRead(item.id)}
+            className={`mb-2 flex w-full items-start justify-between gap-3 rounded-xl p-3 text-left text-xs ${item.readAt ? "bg-slate-50 text-slate-500" : "bg-red-50 text-slate-700"}`}
+          >
+            <span>
+              <b className="block">{item.title}</b>
+              {item.body}
+            </span>
+            {!item.readAt && (
+              <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-red-500" />
+            )}
+          </button>
+        ))
+      ) : (
+        <Empty>No notifications</Empty>
+      )}
+    </Panel>
+  );
+}
+
+function ProfileView({ user, profile }) {
+  const [displayName, setDisplayName] = useState(profile?.displayName || "");
+  const [photoURL, setPhotoURL] = useState(profile?.photoURL || "");
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    setSaving(true);
+    setMessage("");
+    try {
+      await updateTeacherProfile(user.uid, { displayName, photoURL });
+      setMessage("Profile updated.");
+    } catch (error) {
+      setMessage(error?.message || "Unable to update profile.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <Panel title="Teacher profile">
+      <div className="grid max-w-md gap-3">
+        <Field label="Email" value={user.email || ""} disabled readOnly />
+        <Field
+          label="Display name"
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+        />
+        <Field
+          label="Photo URL"
+          value={photoURL}
+          onChange={(e) => setPhotoURL(e.target.value)}
+        />
+        <button
+          onClick={save}
+          disabled={saving}
+          className="w-fit rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
+        >
+          {saving ? "Saving..." : "Save changes"}
+        </button>
+        {message && <p className="text-xs text-slate-500">{message}</p>}
+      </div>
+    </Panel>
+  );
+}
+
+function DocumentsView({ data, teacherId }) {
+  const [documents, setDocuments] = useState([]);
+  const [search, setSearch] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [title, setTitle] = useState("");
+  const [courseId, setCourseId] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(
+    () => subscribeTeacherDocuments(teacherId, setDocuments, () => {}),
+    [teacherId],
+  );
+
+  async function handleUpload(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    setMessage("");
+    try {
+      await uploadTeacherDocument(teacherId, file, { title: title || file.name, courseId });
+      setTitle("");
+      setMessage("Document uploaded.");
+    } catch (error) {
+      setMessage(error?.message || "Unable to upload document.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function remove(item) {
+    await deleteTeacherDocument(item.id, item.storagePath);
+  }
+
+  const filtered = documents.filter((item) =>
+    `${item.title} ${item.fileName}`.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  return (
+    <Panel
+      title="Documents"
+      action={
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search documents"
+          className="w-40 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-red-500"
+        />
+      }
+    >
+      <div className="mb-5 flex flex-wrap items-end gap-2 rounded-2xl bg-slate-50 p-4">
+        <Field
+          label="Title (optional)"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Document title"
+        />
+        <label className="grid gap-1 text-xs font-semibold text-slate-600">
+          Course (optional)
+          <select
+            value={courseId}
+            onChange={(event) => setCourseId(event.target.value)}
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs"
+          >
+            <option value="">No course</option>
+            {data.courses.map((course) => (
+              <option key={course.id} value={course.id}>
+                {course.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="rounded-xl bg-red-600 px-4 py-2.5 text-xs font-bold text-white">
+          {uploading ? "Uploading..." : "Upload file"}
+          <input type="file" onChange={handleUpload} disabled={uploading} className="hidden" />
+        </label>
+      </div>
+      {message && <p className="mb-3 text-xs text-slate-500">{message}</p>}
+      {filtered.length ? (
+        <div className="space-y-2">
+          {filtered.map((item) => (
+            <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-xs">
+              <div className="min-w-0">
+                <b className="block truncate">{item.title}</b>
+                <span className="text-slate-500">
+                  {item.status === "ready" ? item.fileName : item.status}
+                </span>
+              </div>
+              <div className="flex shrink-0 gap-3">
+                {item.fileUrl && (
+                  <a href={item.fileUrl} target="_blank" rel="noreferrer" className="font-bold text-red-600">
+                    Download
+                  </a>
+                )}
+                <button onClick={() => remove(item)} className="font-bold text-slate-400 hover:text-red-600">
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Empty>No documents found</Empty>
+      )}
+    </Panel>
+  );
+}
+
+function PromotionLinkCard({ link, courseTitle, leads }) {
+  const [qrImage, setQrImage] = useState("");
+  const [copied, setCopied] = useState(false);
+  const url = typeof window !== "undefined" ? `${window.location.origin}/promote/${link.id}` : "";
+
+  useEffect(() => {
+    if (!url) return;
+    QRCode.toDataURL(url, { margin: 1, width: 140 }).then(setQrImage);
+  }, [url]);
+
+  function copy() {
+    navigator.clipboard?.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-200 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <b className="block text-sm">{courseTitle}</b>
+          <span className="break-all text-xs text-slate-500">{url}</span>
+          <div className="mt-3 flex gap-2">
+            <button onClick={copy} className="rounded-lg bg-red-600 px-3 py-1.5 text-[11px] font-bold text-white">
+              {copied ? "Copied!" : "Copy link"}
+            </button>
+          </div>
+          <div className="mt-3 flex gap-4 text-[11px] text-slate-500">
+            <span><b className="text-slate-800">{link.viewCount || 0}</b> views</span>
+            <span><b className="text-slate-800">{link.clickCount || 0}</b> clicks</span>
+            <span><b className="text-slate-800">{link.registrationCount || 0}</b> registrations</span>
+          </div>
+        </div>
+        {qrImage && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={qrImage} alt="Promotion QR code" className="h-24 w-24 shrink-0" />
+        )}
+      </div>
+      {leads.length > 0 && (
+        <div className="mt-4 border-t border-slate-100 pt-3">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Leads</p>
+          <div className="space-y-1">
+            {leads.map((lead) => (
+              <div key={lead.id} className="flex justify-between text-xs text-slate-600">
+                <span>{lead.name}</span>
+                <span className="text-slate-400">{lead.email}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PromoteView({ data, teacherId }) {
+  const [links, setLinks] = useState([]);
+  const [leads, setLeads] = useState([]);
+  const [courseId, setCourseId] = useState(data.courses[0]?.id || "");
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => subscribeTeacherPromotionLinks(teacherId, setLinks, () => {}), [teacherId]);
+  useEffect(() => subscribeTeacherLeads(teacherId, setLeads, () => {}), [teacherId]);
+
+  async function generate() {
+    if (!courseId) return;
+    setCreating(true);
+    try {
+      await createPromotionLink(teacherId, courseId);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <Panel
+      title="Promote your training"
+      action={
+        <div className="flex gap-2">
+          <select
+            value={courseId}
+            onChange={(event) => setCourseId(event.target.value)}
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+          >
+            <option value="">Select training</option>
+            {data.courses.map((course) => (
+              <option key={course.id} value={course.id}>
+                {course.title}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={generate}
+            disabled={!courseId || creating}
+            className="rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+          >
+            {creating ? "Generating..." : "Generate link"}
+          </button>
+        </div>
+      }
+    >
+      {links.length ? (
+        <div className="space-y-4">
+          {links.map((link) => (
+            <PromotionLinkCard
+              key={link.id}
+              link={link}
+              courseTitle={data.courses.find((course) => course.id === link.courseId)?.title || link.courseId}
+              leads={leads.filter((lead) => lead.linkId === link.id)}
+            />
+          ))}
+        </div>
+      ) : (
+        <Empty>No promotion links yet. Pick a training and generate one.</Empty>
+      )}
+    </Panel>
+  );
+}
+
+const SCANNER_ELEMENT_ID = "teacher-qr-scanner";
+
+function ScanQrView({ data }) {
+  const [classId, setClassId] = useState(data.classes[0]?.id || "");
+  const [scanning, setScanning] = useState(false);
+  const [manualToken, setManualToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [cameraError, setCameraError] = useState("");
+  const scannerRef = useRef(null);
+
+  async function handleToken(token) {
+    if (!classId || !token || busy) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const response = await scanAttendanceQr({ token, classId });
+      setResult({ ok: true, ...response });
+    } catch (error) {
+      setResult({ ok: false, message: error.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startScanning() {
+    setCameraError("");
+    setResult(null);
+    try {
+      const { Html5Qrcode } = await import("html5-qrcode");
+      const scanner = new Html5Qrcode(SCANNER_ELEMENT_ID);
+      scannerRef.current = scanner;
+      await scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 220 },
+        async (decodedText) => {
+          await scanner.stop().catch(() => {});
+          setScanning(false);
+          handleToken(decodedText);
+        },
+        () => {},
+      );
+      setScanning(true);
+    } catch (error) {
+      setCameraError(
+        error?.message?.includes("Permission")
+          ? "Camera permission was denied. Use manual entry below instead."
+          : "Unable to access the camera. Use manual entry below instead.",
+      );
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      scannerRef.current?.stop().catch(() => {});
+    };
+  }, [scannerRef]);
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_.8fr]">
+      <Panel
+        title="Scan a student QR code"
+        action={
+          <select
+            value={classId}
+            onChange={(event) => setClassId(event.target.value)}
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+          >
+            <option value="">Select class</option>
+            {data.classes.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name || item.id}
+              </option>
+            ))}
+          </select>
+        }
+      >
+        {!classId ? (
+          <Empty>Select a class before scanning.</Empty>
+        ) : (
+          <>
+            <div id={SCANNER_ELEMENT_ID} className="mx-auto max-w-sm overflow-hidden rounded-2xl bg-slate-900" />
+            {!scanning && (
+              <button
+                onClick={startScanning}
+                className="mt-4 w-full rounded-xl bg-red-600 py-3 text-xs font-bold text-white"
+              >
+                Start camera scan
+              </button>
+            )}
+            {cameraError && <p className="mt-3 text-xs text-red-600">{cameraError}</p>}
+            <div className="mt-5 border-t border-slate-100 pt-4">
+              <p className="mb-2 text-xs font-semibold text-slate-500">
+                Camera denied? Paste the QR token manually:
+              </p>
+              <div className="flex gap-2">
+                <input
+                  value={manualToken}
+                  onChange={(event) => setManualToken(event.target.value)}
+                  placeholder="Scanned token"
+                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs"
+                />
+                <button
+                  onClick={() => handleToken(manualToken)}
+                  disabled={busy || !manualToken}
+                  className="rounded-xl bg-slate-800 px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
+                >
+                  Submit
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </Panel>
+      <Panel title="Result">
+        {busy ? (
+          <Empty>Checking QR code...</Empty>
+        ) : !result ? (
+          <Empty>Scan a QR code to see the result here.</Empty>
+        ) : result.ok ? (
+          <div className={`rounded-2xl p-4 text-sm ${result.code === "already_marked" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>
+            <b className="block">{result.message}</b>
+            {result.student && (
+              <p className="mt-2 text-xs">
+                {result.student.displayName || result.student.email}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-2xl bg-red-50 p-4 text-sm text-red-700">{result.message}</div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 export default function TeacherWorkspacePage({ module = "Dashboard" }) {
-  const { user } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const [data, setData] = useState(blank);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => {
-    if (!user?.uid) return undefined;
+    if (module === "Training" || authLoading || profile?.role !== "Teacher" || !user?.uid) return undefined;
     const update = (key) => (value) => {
       setData((current) => ({ ...current, [key]: value }));
       setLoading(false);
@@ -759,6 +1218,7 @@ export default function TeacherWorkspacePage({ module = "Dashboard" }) {
       achievements: update("achievements"),
       certificates: update("certificates"),
       conversations: update("conversations"),
+      notifications: update("notifications"),
       error: (firebaseError, collectionName) => {
         console.error("[teacher-workspace] data load failed", firebaseError);
         setError(
@@ -767,7 +1227,7 @@ export default function TeacherWorkspacePage({ module = "Dashboard" }) {
         setLoading(false);
       },
     });
-  }, [user?.uid]);
+  }, [authLoading, module, profile?.role, user?.uid]);
   const unread = useMemo(
     () =>
       data.conversations.reduce(
@@ -776,7 +1236,9 @@ export default function TeacherWorkspacePage({ module = "Dashboard" }) {
       ),
     [data.conversations],
   );
-  const content = loading ? (
+  const content = module === "Training" ? (
+    <TrainingManagement role="Teacher" />
+  ) : loading ? (
     <Empty>Loading teacher data...</Empty>
   ) : error ? (
     <Empty>{error}</Empty>
@@ -788,12 +1250,37 @@ export default function TeacherWorkspacePage({ module = "Dashboard" }) {
     <TrainingView data={data} />
   ) : module === "Attendance" ? (
     <AttendanceView data={data} teacherId={user.uid} />
-  ) : module === "Events" ? (
+  ) : module === "Event" ? (
     <EventsView data={data} teacherId={user.uid} />
-  ) : module === "Achievements" ? (
+  ) : module === "Achievement" ? (
     <AchievementsView data={data} teacherId={user.uid} />
   ) : module === "Certificates" ? (
     <CertificatesView data={data} teacherId={user.uid} />
+  ) : module === "Assignments" ? (
+    <ScopedRecordsView title="Assignments" records={data.assignments} empty="No assignments found for your assigned classes." />
+  ) : module === "Submissions" ? (
+    <ScopedRecordsView title="Submissions" records={data.submissions} empty="No submissions found for your assigned classes." />
+  ) : module === "Results" ? (
+    <ScopedRecordsView title="Results" records={data.submissions.filter((item) => item.score != null)} empty="No graded results found." />
+  ) : module === "Notifications" ? (
+    <NotificationsView data={data} />
+  ) : module === "Profile" ? (
+    <ProfileView user={user} profile={profile} />
+  ) : module === "ID Card" ? (
+    <Panel title="Your ID card">
+      <IdCardPrint
+        mode="self"
+        roleLabel="Teacher"
+        fallbackName={profile?.displayName || user.email}
+        fallbackEmail={user.email}
+      />
+    </Panel>
+  ) : module === "Scan QR Code" ? (
+    <ScanQrView data={data} teacherId={user.uid} />
+  ) : module === "Documents" ? (
+    <DocumentsView data={data} teacherId={user.uid} />
+  ) : module === "Promote" ? (
+    <PromoteView data={data} teacherId={user.uid} />
   ) : (
     <ChatView data={data} teacherId={user.uid} />
   );

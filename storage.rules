@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function role() { return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role; }
+    function admin() { return signedIn() && (role() == 'Admin' || role() == 'Director'); }
+    function teacher() { return signedIn() && role() == 'Teacher'; }
+    function documentMeta(docId) { return firestore.get(/databases/(default)/documents/documents/$(docId)).data; }
+    function ownsDocument(docId) {
+      return teacher() && (
+        documentMeta(docId).teacherId == request.auth.uid ||
+        (documentMeta(docId).teacherIds is list && request.auth.uid in documentMeta(docId).teacherIds)
+      );
+    }
+
+    match /documents/{docId}/{fileName} {
+      allow read: if admin() || ownsDocument(docId);
+      allow write, delete: if admin() || ownsDocument(docId);
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
