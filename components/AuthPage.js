@@ -11,9 +11,11 @@ function Logo() {
       href="/"
       className="flex items-center justify-center gap-3 text-xl font-bold tracking-tight text-slate-900"
     >
-      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-red-600 text-xl text-white shadow-xl shadow-red-600/20">
-        N
-      </span>
+      <img
+        src="/logo.jpeg"
+        alt="Next Academy logo"
+        className="h-12 w-12 rounded-2xl object-contain shadow-xl shadow-red-600/20"
+      />
       <span>Next Academy</span>
     </Link>
   );

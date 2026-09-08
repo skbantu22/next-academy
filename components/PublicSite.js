@@ -80,9 +80,11 @@ function Brand({ light = false }) {
       href="#home"
       className={`flex items-center gap-2 text-lg font-bold tracking-tight ${light ? "text-white" : "text-[#17191a]"}`}
     >
-      <span className="grid h-8 w-8 place-items-center rounded-[9px_9px_9px_2px] bg-[#ee4d35] font-serif text-xl text-white">
-        N
-      </span>
+      <img
+        src="/logo.jpeg"
+        alt="Next Academy logo"
+        className="h-8 w-8 rounded-[9px_9px_9px_2px] object-contain"
+      />
       next
       <span className={light ? "-ml-2 text-[#ff806b]" : "-ml-2 text-[#ee4d35]"}>
         academy

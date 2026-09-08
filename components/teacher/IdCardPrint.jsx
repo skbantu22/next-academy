@@ -76,7 +76,7 @@ export default function IdCardPrint({
         className="mx-auto w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
       >
         <div className="mb-4 flex items-center gap-2">
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-red-600 text-sm font-bold text-white">N</span>
+          <img src="/logo.jpeg" alt="Next Academy logo" className="h-9 w-9 rounded-lg object-contain" />
           <div>
             <b className="block text-sm">{organization}</b>
             <small className="text-[10px] uppercase tracking-widest text-slate-400">{roleLabel} ID Card</small>

@@ -7,9 +7,11 @@ import SidebarIcon from "./SidebarIcon";
 function Brand() {
   return (
     <div className="flex items-center gap-3">
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#dc2626] text-xl font-bold text-white shadow-lg shadow-red-950/30">
-        N
-      </span>
+      <img
+        src="/logo.jpeg"
+        alt="Next Academy logo"
+        className="h-10 w-10 rounded-xl object-contain shadow-lg shadow-red-950/30"
+      />
       <div>
         <p className="text-sm font-bold leading-tight text-white">
           Next Academy
