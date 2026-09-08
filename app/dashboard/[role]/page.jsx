@@ -176,7 +176,7 @@ function DirectorDashboard({ profile, user }) {
       onLogout={logout}
     >
             {active === "Dashboard" ? (
-              <DirectorOverview />
+              <DirectorOverview onNavigate={setActive} />
             ) : active === "Students" ? (
               <StudentManagement role="Director" />
             ) : active === "User" ? (

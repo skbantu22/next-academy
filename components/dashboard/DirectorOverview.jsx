@@ -1,38 +1,28 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, PieChart, Pie, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BookOpen, GraduationCap, Layers, Presentation, RefreshCw, UserCheck, Wallet } from "lucide-react";
 import { studentApi } from "../../lib/services/student-service";
 import { loadTeacherAssignmentData } from "../../lib/services/teacher-assignment-service";
 import { loadFinanceOverview } from "../../lib/services/finance-service";
+import { loadTraining } from "../../lib/services/training-service";
+import { countWithdrawnEnrollments, loadRecentActivities, loadUpcomingEvents } from "../../lib/director-analytics";
 import { formatMoney } from "../training/PaymentHistoryTable";
 import StatCard from "../finance/StatCard";
+import { ChartCard, EmptyChartState } from "./overview/ChartCard";
+import TrendCharts from "./overview/TrendCharts";
+import StatusCharts from "./overview/StatusCharts";
+import TrainingPerformance from "./overview/TrainingPerformance";
+import TeacherWorkload from "./overview/TeacherWorkload";
+import { EnrollmentBreakdown, OutstandingDueCard, RevenueVsExpenses } from "./overview/FinanceSummaries";
+import EventsAndActivity from "./overview/EventsAndActivity";
 
 // Same red/white accent used everywhere else in the app (--dash-primary and
 // friends from app/globals.css) — chart series reuse those exact tokens
 // instead of inventing a new palette.
 const CHART_COLORS = ["#FF2D2D", "#F59E0B", "#22C55E", "#3B82F6", "#A855F7", "#14B8A6", "#EC4899"];
 const MAX_CHART_SLICES = 6;
-
-function monthLabel(monthKey) {
-  const [year, month] = monthKey.split("-").map(Number);
-  return new Date(year, month - 1, 1).toLocaleString("en-US", { month: "short", year: "numeric" });
-}
 
 // Groups a long tail of trainings into "Other" so the bar/doughnut charts
 // stay readable instead of rendering dozens of slivers.
@@ -44,6 +34,9 @@ function topSlices(rows) {
   return [...top, { name: "Other", count: otherCount }];
 }
 
+// Unchanged from before this task — still the sole source for the 6 KPI
+// cards and the two existing charts. Nothing new shares this Promise, so a
+// failure in any of the NEW analytics below can never break these.
 async function fetchOverviewData() {
   const [studentsRes, teacherRes, financeRes] = await Promise.all([
     studentApi(),
@@ -58,37 +51,45 @@ async function fetchOverviewData() {
     admissions: financeRes.admissions || [],
     payments: financeRes.payments || [],
     totalIncome: financeRes.totals?.income || 0,
+    totals: financeRes.totals || {},
+    expensesCount: (financeRes.expenses || []).length,
   };
 }
 
-function ChartCard({ title, subtitle, icon: Icon, children }) {
-  return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-white p-6 shadow-sm">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-bold text-ink">{title}</h3>
-          <p className="text-xs text-muted">{subtitle}</p>
-        </div>
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-active text-primary">
-          <Icon className="h-4 w-4" aria-hidden="true" />
-        </span>
-      </div>
-      {children}
-    </div>
-  );
+// Separate, Promise.allSettled-based fetch for the new sections — a failure
+// in any one of these can only ever affect that one section's own card,
+// never the KPI cards/charts above (different Promise entirely) and never
+// the other new sections (each tracked independently below).
+async function fetchExtraAnalytics() {
+  const [coursesResult, eventsResult, activitiesResult, withdrawnResult] = await Promise.allSettled([
+    loadTraining(),
+    loadUpcomingEvents(),
+    loadRecentActivities(),
+    countWithdrawnEnrollments(),
+  ]);
+  return {
+    courses: coursesResult.status === "fulfilled" ? coursesResult.value.courses || [] : [],
+    coursesError: coursesResult.status === "rejected",
+    events: eventsResult.status === "fulfilled" ? eventsResult.value : [],
+    eventsError: eventsResult.status === "rejected",
+    activities: activitiesResult.status === "fulfilled" ? activitiesResult.value : [],
+    activitiesError: activitiesResult.status === "rejected",
+    withdrawnCount: withdrawnResult.status === "fulfilled" ? withdrawnResult.value : 0,
+    withdrawnError: withdrawnResult.status === "rejected",
+  };
 }
 
-function EmptyChartState({ message }) {
-  return <p className="grid h-70 place-items-center text-center text-sm text-muted">{message}</p>;
-}
-
-export default function DirectorOverview() {
+export default function DirectorOverview({ onNavigate }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
+  const [extra, setExtra] = useState(null);
+  const [extraLoading, setExtraLoading] = useState(true);
+
   const load = useCallback(() => fetchOverviewData(), []);
+  const loadExtra = useCallback(() => fetchExtraAnalytics(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,6 +108,27 @@ export default function DirectorOverview() {
     };
   }, [load]);
 
+  useEffect(() => {
+    let cancelled = false;
+    loadExtra()
+      .then((result) => {
+        if (!cancelled) setExtra(result);
+      })
+      .finally(() => {
+        if (!cancelled) setExtraLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadExtra]);
+
+  function handleRefreshExtra() {
+    setExtraLoading(true);
+    loadExtra()
+      .then(setExtra)
+      .finally(() => setExtraLoading(false));
+  }
+
   function handleRefresh() {
     setRefreshing(true);
     setError("");
@@ -114,6 +136,7 @@ export default function DirectorOverview() {
       .then(setData)
       .catch((err) => setError(err.message || "Unable to refresh dashboard analytics."))
       .finally(() => setRefreshing(false));
+    handleRefreshExtra();
   }
 
   const stats = useMemo(() => {
@@ -136,19 +159,6 @@ export default function DirectorOverview() {
       counts.set(name, (counts.get(name) || 0) + 1);
     });
     return topSlices([...counts.entries()].map(([name, count]) => ({ name, count })));
-  }, [data]);
-
-  const monthlyRevenue = useMemo(() => {
-    if (!data) return [];
-    const totals = new Map();
-    data.payments.forEach((payment) => {
-      const key = (payment.paymentDate || "").slice(0, 7);
-      if (!key) return;
-      totals.set(key, (totals.get(key) || 0) + (Number(payment.amount) || 0));
-    });
-    return [...totals.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, amount]) => ({ month: monthLabel(key), amount }));
   }, [data]);
 
   return (
@@ -259,43 +269,51 @@ export default function DirectorOverview() {
         </ChartCard>
       </section>
 
-      <ChartCard title="Monthly Revenue Analytics" subtitle="Track successful payments and installments month over month" icon={Wallet}>
-        {loading ? (
-          <EmptyChartState message="Loading revenue data..." />
-        ) : monthlyRevenue.length ? (
-          <div className="h-80 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={monthlyRevenue} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="directorRevenueFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#FF2D2D" stopOpacity={0.16} />
-                    <stop offset="100%" stopColor="#FF2D2D" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#667085" }} />
-                <YAxis domain={[0, "dataMax"]} tick={{ fontSize: 11, fill: "#667085" }} tickFormatter={(value) => formatMoney(value)} width={80} />
-                <Tooltip
-                  formatter={(value) => [formatMoney(value), "Revenue"]}
-                  contentStyle={{ borderRadius: 12, border: "1px solid #e7e5e4", fontSize: 12 }}
-                />
-                <Area
-                  type="natural"
-                  dataKey="amount"
-                  name="Revenue"
-                  stroke="#FF2D2D"
-                  strokeWidth={3}
-                  fill="url(#directorRevenueFill)"
-                  dot={{ r: 4, fill: "#FF2D2D", strokeWidth: 2, stroke: "#ffffff" }}
-                  activeDot={{ r: 6 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        ) : (
-          <EmptyChartState message="No successful payments recorded yet." />
-        )}
-      </ChartCard>
+      <TrendCharts admissions={data?.admissions || []} payments={data?.payments || []} loading={loading} />
+
+      <StatusCharts
+        totals={data?.totals}
+        loading={loading}
+        courses={extra?.courses}
+        coursesLoading={extraLoading}
+        coursesError={extra?.coursesError}
+        onRetryCourses={handleRefreshExtra}
+      />
+
+      <TrainingPerformance
+        courses={extra?.courses}
+        loading={extraLoading}
+        error={extra?.coursesError}
+        onRetry={handleRefreshExtra}
+        onNavigate={onNavigate}
+      />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <TeacherWorkload teachers={data?.teachers} courses={data?.courses} classes={data?.classes} students={data?.students} loading={loading} />
+        <OutstandingDueCard totals={data?.totals} loading={loading} onNavigate={onNavigate} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <EnrollmentBreakdown
+          activeCount={stats?.enrollments}
+          withdrawnCount={extra?.withdrawnCount}
+          loading={loading || extraLoading}
+          error={extra?.withdrawnError}
+          onRetry={handleRefreshExtra}
+        />
+        <RevenueVsExpenses totals={data?.totals} expensesCount={data?.expensesCount} loading={loading} />
+      </div>
+
+      <EventsAndActivity
+        events={extra?.events}
+        eventsLoading={extraLoading}
+        eventsError={extra?.eventsError}
+        onRetryEvents={handleRefreshExtra}
+        activities={extra?.activities}
+        activitiesLoading={extraLoading}
+        activitiesError={extra?.activitiesError}
+        onRetryActivities={handleRefreshExtra}
+      />
     </div>
   );
 }
