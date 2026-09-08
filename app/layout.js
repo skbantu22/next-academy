@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "../lib/auth-context";
+import PwaRegister from "../components/PwaRegister";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,6 +16,11 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "Next Academy | Learning for what comes next",
   description: "Practical learning for people building what comes next.",
+  manifest: "/manifest.json",
+};
+
+export const viewport = {
+  themeColor: "#ff2d2d",
 };
 
 export default function RootLayout({ children }) {
@@ -25,6 +31,7 @@ export default function RootLayout({ children }) {
     >
       <body className="min-h-full flex flex-col">
         <AuthProvider>{children}</AuthProvider>
+        <PwaRegister />
       </body>
     </html>
   );

@@ -1,0 +1,14 @@
+{
+  "name": "Next Academy",
+  "short_name": "Next Academy",
+  "description": "Practical learning for people building what comes next.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#faf9f7",
+  "theme_color": "#ff2d2d",
+  "icons": [
+    { "src": "/logo.jpeg", "sizes": "192x192", "type": "image/jpeg" },
+    { "src": "/logo.jpeg", "sizes": "512x512", "type": "image/jpeg" }
+  ]
+}

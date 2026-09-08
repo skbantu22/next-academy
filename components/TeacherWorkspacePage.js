@@ -21,6 +21,7 @@ import WorkspaceShell from "./dashboard/WorkspaceShell";
 import IdCardPrint from "./teacher/IdCardPrint";
 import ChatWorkspace from "./chat/ChatWorkspace";
 import { NotificationList } from "./dashboard/NotificationBell";
+import SettingsPage from "./settings/SettingsPage";
 import { markNotificationRead } from "../lib/notification-data";
 import { scanAttendanceQr } from "../lib/services/qr-service";
 import {
@@ -63,6 +64,7 @@ const paths = {
   Results: "/teacher/results",
   Notifications: "/teacher/notifications",
   Profile: "/teacher/profile",
+  Settings: "/teacher/settings",
   "ID Card": "/teacher/id-card",
   "Scan QR Code": "/teacher/scan-qr",
   Documents: "/teacher/documents",
@@ -1189,6 +1191,8 @@ export default function TeacherWorkspacePage({ module = "Dashboard" }) {
       currentUserRole="Teacher"
       currentUserName={profile?.displayName || user.email}
     />
+  ) : module === "Settings" ? (
+    <SettingsPage />
   ) : (
     <Empty>Module not found.</Empty>
   );

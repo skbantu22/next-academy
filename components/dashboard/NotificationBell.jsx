@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bell, BellRing, CircleDollarSign, MessageCircle, UserCheck, CheckCheck } from "lucide-react";
 import { useAuth } from "../../lib/auth-context";
 import { subscribeMyNotifications, markAllNotificationsRead, markNotificationRead } from "../../lib/notification-data";
@@ -65,7 +65,7 @@ export function NotificationList({ items, onItemClick, emptyMessage = "No notifi
 }
 
 export default function NotificationBell() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
@@ -84,7 +84,11 @@ export default function NotificationBell() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
-  const unreadCount = useMemo(() => notifications.filter((item) => !item.readAt).length, [notifications]);
+  // Respect the Settings page's Notifications preference — real
+  // notifications keep arriving in Firestore either way (nothing is lost),
+  // this only controls whether the badge/BellRing draws attention to them.
+  const notificationsEnabled = profile?.notificationsEnabled !== false;
+  const unreadCount = notificationsEnabled ? notifications.filter((item) => !item.readAt).length : 0;
   const Icon = unreadCount > 0 ? BellRing : Bell;
 
   return (

@@ -9,13 +9,13 @@ export const dynamic = "force-dynamic";
 async function access(request) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token)
-    return { denied: NextResponse.json({ message: "Sign in as a teacher to continue." }, { status: 401 }) };
+    return { denied: NextResponse.json({ message: "Sign in to continue." }, { status: 401 }) };
   const db = getAdminDb();
   const decoded = await getAdminAuth().verifyIdToken(token);
   const profile = await db.collection("users").doc(decoded.uid).get();
   const data = profile.data() || {};
-  if (!profile.exists || data.active === false || data.role !== "Teacher")
-    return { denied: NextResponse.json({ message: "Teacher access is required." }, { status: 403 }) };
+  if (!profile.exists || data.active === false)
+    return { denied: NextResponse.json({ message: "Account access is required." }, { status: 403 }) };
   return { db, uid: decoded.uid, profile: data };
 }
 
@@ -32,6 +32,8 @@ export async function POST(request) {
     let targetData = a.profile;
 
     if (mode === "student") {
+      if (a.profile.role !== "Teacher")
+        return NextResponse.json({ message: "Teacher access is required to issue a student ID card." }, { status: 403 });
       const studentId = typeof body.studentId === "string" ? body.studentId : "";
       if (!studentId)
         return NextResponse.json({ message: "Student ID is required." }, { status: 400 });
@@ -57,11 +59,13 @@ export async function POST(request) {
       await targetRef.update({ qrVersion, updatedAt: FieldValue.serverTimestamp() });
     }
 
-    const qrToken = signQrToken({
-      sub: targetId,
-      kind: mode === "student" ? "student" : "teacher",
-      v: qrVersion,
-    });
+    // A self-issued card's `kind` must stay "student" when the caller
+    // actually is a Student, so it still works with the existing
+    // attendance-scan contract (which only recognizes kind === "student").
+    // Every other self-issuing role gets the generic "teacher" bucket —
+    // nothing else in the app branches on kind besides attendance-scan.
+    const kind = mode === "student" ? "student" : targetData.role === "Student" ? "student" : "teacher";
+    const qrToken = signQrToken({ sub: targetId, kind, v: qrVersion });
 
     return NextResponse.json({
       token: qrToken,
@@ -70,7 +74,7 @@ export async function POST(request) {
         id: targetId,
         displayName: targetData.displayName || "",
         email: targetData.email || "",
-        role: mode === "student" ? "Student" : "Teacher",
+        role: mode === "student" ? "Student" : targetData.role || "Member",
       },
     });
   } catch (error) {

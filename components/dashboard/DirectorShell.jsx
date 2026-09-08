@@ -44,7 +44,6 @@ export default function DirectorShell({
   children,
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
 
   function handleNavClick(module) {
     onNavigate?.(module);
@@ -117,38 +116,26 @@ export default function DirectorShell({
           </div>
           <div className="flex items-center gap-3">
             <ChatButton onClick={() => onNavigate?.("Chat")} />
+            <button
+              onClick={() => onNavigate?.("Settings")}
+              className="flex items-center gap-2 rounded-full border border-border-subtle bg-white py-1 pl-1 pr-3 hover:bg-page"
+              aria-label="Open settings"
+              title={userEmail}
+            >
+              <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-primary bg-active text-xs font-bold text-primary">
+                {initials}
+              </span>
+              <span className="hidden text-left sm:block">
+                <b className="block text-xs text-ink">{name}</b>
+              </span>
+            </button>
+            <button
+              onClick={onLogout}
+              className="rounded-full border border-border-subtle bg-white px-4 py-2 text-xs font-bold text-ink hover:bg-page"
+            >
+              Sign out
+            </button>
             <NotificationBell />
-            <div className="relative">
-              <button
-                onClick={() => setProfileOpen(!profileOpen)}
-                className="flex items-center gap-2 border-l border-border-subtle pl-3"
-              >
-                <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-xs font-bold text-white">
-                  {initials}
-                </span>
-                <span className="hidden text-left sm:block">
-                  <b className="block text-xs text-ink">{name}</b>
-                  <small className="text-[10px] text-muted">Director</small>
-                </span>
-                <span className="text-subtle">⌄</span>
-              </button>
-              {profileOpen && (
-              <div className="absolute right-0 top-12 z-30 w-52 rounded-2xl border border-border-subtle bg-white p-3 shadow-2xl">
-                <p className="border-b border-border-subtle pb-3 text-xs font-semibold">
-                  {userEmail}
-                </p>
-                <p className="py-3 text-xs text-muted">
-                  Authenticated Director profile
-                </p>
-                <button
-                  onClick={onLogout}
-                  className="w-full rounded-lg bg-active px-3 py-2 text-left text-xs font-bold text-primary"
-                >
-                  Sign Out Session
-                </button>
-              </div>
-              )}
-            </div>
           </div>
         </header>
         <div className="px-4 py-4 md:py-6 lg:py-8">

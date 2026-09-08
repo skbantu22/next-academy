@@ -17,6 +17,7 @@ import FinanceManagement from "../../../components/finance/FinanceManagement";
 import MyPaymentSummary from "../../../components/students/MyPaymentSummary";
 import LoadingScreen from "../../../components/dashboard/LoadingScreen";
 import ChatWorkspace from "../../../components/chat/ChatWorkspace";
+import SettingsPage from "../../../components/settings/SettingsPage";
 
 export const roleConfig = {
   Student: {
@@ -188,6 +189,8 @@ function DirectorDashboard({ profile, user }) {
               <FinanceManagement />
             ) : active === "Chat" ? (
               <ChatWorkspace currentUserId={user.uid} currentUserRole="Director" currentUserName={name} />
+            ) : active === "Settings" ? (
+              <SettingsPage />
             ) : (
               <EmptyDataPanel
                 title={`${active} module`}
@@ -271,6 +274,8 @@ function DashboardContent({ role, profile, user }) {
               <TeacherAssignment />
             ) : active === "Chat" ? (
               <ChatWorkspace currentUserId={user.uid} currentUserRole={role} currentUserName={name} />
+            ) : active === "Settings" ? (
+              <SettingsPage />
             ) : (
               <>
             {active === "Dashboard" && (
