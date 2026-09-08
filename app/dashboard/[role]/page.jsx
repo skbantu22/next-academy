@@ -18,6 +18,7 @@ import MyPaymentSummary from "../../../components/students/MyPaymentSummary";
 import LoadingScreen from "../../../components/dashboard/LoadingScreen";
 import ChatWorkspace from "../../../components/chat/ChatWorkspace";
 import SettingsPage from "../../../components/settings/SettingsPage";
+import AccountPendingScreen from "../../../components/dashboard/AccountPendingScreen";
 
 export const roleConfig = {
   Student: {
@@ -478,7 +479,7 @@ function DashboardContent({ role, profile, user }) {
 export default function RoleDashboardPage() {
   const params = useParams();
   const router = useRouter();
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, logout } = useAuth();
   const rawRole = params?.role;
 
   const roleKey = Array.isArray(rawRole) ? rawRole[0] : rawRole;
@@ -513,6 +514,16 @@ export default function RoleDashboardPage() {
         Redirecting to login...
       </div>
     );
+  }
+
+  // Central approval gate — a Student whose registration hasn't been
+  // approved (or was rejected) never reaches DashboardContent, so every
+  // tab it renders (Dashboard, My Training, Events, Settings, etc.) is
+  // blocked in this one place rather than needing its own check.
+  const isBlockedStudent =
+    profileRole === "Student" && (profile?.status === "pending" || profile?.status === "rejected");
+  if (isBlockedStudent) {
+    return <AccountPendingScreen status={profile.status} onLogout={logout} />;
   }
 
   return (

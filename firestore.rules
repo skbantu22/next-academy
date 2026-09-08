@@ -15,9 +15,9 @@ service cloud.firestore {
     function enrolledInClass(classId) { return signedIn() && exists(/databases/$(database)/documents/classes/$(classId)) && enrolledInCourse(get(/databases/$(database)/documents/classes/$(classId)).data.courseId) && get(/databases/$(database)/documents/enrollments/$(get(/databases/$(database)/documents/classes/$(classId)).data.courseId + '_' + request.auth.uid)).data.classId == classId; }
 
     match /users/{userId} {
-      allow create: if admin() || (signedIn() && request.auth.uid == userId && request.resource.data.uid == userId && request.resource.data.role == 'Student');
+      allow create: if admin() || (signedIn() && request.auth.uid == userId && request.resource.data.uid == userId && request.resource.data.role == 'Student' && (!('status' in request.resource.data) || request.resource.data.status == 'pending'));
       allow read: if signedIn() && (request.auth.uid == userId || admin() || (resource.data.role == 'Student' && resource.data.teacherIds.hasAny([request.auth.uid])));
-      allow update: if admin() || (signedIn() && request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'role', 'teacherIds', 'active', 'qrVersion']));
+      allow update: if admin() || (signedIn() && request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'role', 'teacherIds', 'active', 'qrVersion', 'status']));
       allow delete: if admin();
     }
     match /classes/{classId} {

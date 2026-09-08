@@ -49,6 +49,11 @@ export default function SettingsPage() {
   const [notifSaving, setNotifSaving] = useState(false);
 
   const name = profile?.displayName || user?.displayName || user?.email?.split("@")[0] || "Member";
+  // Defense-in-depth only — a pending/rejected Student can't actually reach
+  // Settings at all, since app/dashboard/[role]/page.jsx's central gate
+  // blocks the whole dashboard first. This just keeps this page honest if
+  // it's ever reached some other way.
+  const isBlocked = profile?.status === "pending" || profile?.status === "rejected";
   const notificationsEnabled = profile?.notificationsEnabled !== false;
   const interests = Array.isArray(profile?.interests) ? profile.interests : [];
 
@@ -197,19 +202,28 @@ export default function SettingsPage() {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowIdCard(true)}
-            className="flex w-full items-center gap-3 rounded-2xl border border-red-line bg-active p-5 text-left shadow-sm transition hover:-translate-y-0.5"
-          >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-primary">
-              <Contact className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <span>
-              <b className="block text-sm text-primary">View your ID Card</b>
-              <span className="text-xs text-muted">Open your digital member card and check-in QR for events.</span>
-            </span>
-          </button>
+          {isBlocked ? (
+            <div className="rounded-2xl border border-border-subtle bg-page p-5">
+              <b className="block text-sm text-ink">ID Card</b>
+              <p className="mt-1 text-xs text-muted">
+                🔒 ID Card unavailable — your ID Card will become available after your account is approved.
+              </p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowIdCard(true)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-red-line bg-active p-5 text-left shadow-sm transition hover:-translate-y-0.5"
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-primary">
+                <Contact className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <span>
+                <b className="block text-sm text-primary">View your ID Card</b>
+                <span className="text-xs text-muted">Open your digital member card and check-in QR for events.</span>
+              </span>
+            </button>
+          )}
 
           <div className="rounded-2xl border border-[var(--settings-border,var(--dash-border))] bg-[var(--settings-card,#ffffff)] p-6 shadow-sm">
             <b className="text-sm text-[var(--settings-ink,var(--dash-ink))]">App Settings</b>
@@ -278,11 +292,22 @@ export default function SettingsPage() {
               <DisplayField label="Member ID" value={profile?.studentId} />
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-subtle">Account Status</p>
-                <span
-                  className={`mt-1 inline-block rounded-full px-2.5 py-1 text-[10px] font-bold ${profile?.active === false ? "bg-active text-primary" : "bg-success-soft text-success"}`}
-                >
-                  {profile?.active === false ? "inactive" : "active"}
-                </span>
+                {profile?.status === "pending" ? (
+                  <span className="mt-1 inline-block rounded-full bg-warning-soft px-2.5 py-1 text-[10px] font-bold text-warning">
+                    🟠 Pending Approval
+                  </span>
+                ) : profile?.status === "rejected" ? (
+                  <span className="mt-1 inline-block rounded-full bg-active px-2.5 py-1 text-[10px] font-bold text-primary">
+                    🔴 Registration Rejected
+                  </span>
+                ) : (
+                  <span
+                    className={`mt-1 inline-block rounded-full px-2.5 py-1 text-[10px] font-bold ${profile?.active === false ? "bg-active text-primary" : "bg-success-soft text-success"}`}
+                  >
+                    {profile?.active === false ? "inactive" : "🟢 active"}
+                  </span>
+                )}
+                {isBlocked && <p className="mt-1.5 text-[10px] text-muted">Account is not active yet.</p>}
               </div>
             </div>
           </div>

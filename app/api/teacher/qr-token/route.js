@@ -16,6 +16,13 @@ async function access(request) {
   const data = profile.data() || {};
   if (!profile.exists || data.active === false)
     return { denied: NextResponse.json({ message: "Account access is required." }, { status: 403 }) };
+  // A pending/rejected registration must never receive an ID card, even via
+  // a direct API call — this is the real, server-side enforcement point;
+  // the UI hiding the button is only a convenience on top of this.
+  if (data.status === "pending")
+    return { denied: NextResponse.json({ message: "Your account is pending administrator approval." }, { status: 403 }) };
+  if (data.status === "rejected")
+    return { denied: NextResponse.json({ message: "Your registration was not approved." }, { status: 403 }) };
   return { db, uid: decoded.uid, profile: data };
 }
 

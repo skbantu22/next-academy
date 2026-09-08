@@ -10,6 +10,7 @@ const managers = new Set(["Admin", "Director"]);
 const inactiveClasses = new Set(["archived", "cancelled"]);
 const plain = (snapshot) => ({ id: snapshot.id, ...snapshot.data() });
 const percent = (value, total) => (total ? Math.round((value / total) * 100) : null);
+const isoDate = (value) => (value?.toDate ? value.toDate().toISOString() : typeof value === "string" ? value : null);
 
 function failure(stage, error) {
   console.error("[students-api] request failed", { stage, code: error?.code || "unknown" });
@@ -23,7 +24,7 @@ async function requireManager(request) {
   const decoded = await auth.verifyIdToken(token);
   const profile = await db.collection("users").doc(decoded.uid).get();
   if (!profile.exists || profile.data().active === false || !managers.has(profile.data().role)) return { denied: NextResponse.json({ message: "Administrator access is required." }, { status: 403 }) };
-  return { auth, db };
+  return { auth, db, adminUid: decoded.uid };
 }
 
 export async function GET(request) {
@@ -43,7 +44,7 @@ export async function GET(request) {
       const totalAssignments = assignmentRows.filter((item) => courseIds.has(item.courseId));
       const completed = new Set(submissionRows.filter((item) => item.studentId === student.id && courseIds.has(item.courseId)).map((item) => item.assignmentId).filter(Boolean));
       const ownAttendance = attendanceRows.filter((item) => item.studentId === student.id);
-      return { ...student, studentId: student.studentId || null, courseNames: [...courseIds].map((id) => courseMap.get(id)?.title || "Course unavailable").join(", ") || null, progress: percent(completed.size, totalAssignments.length), attendance: attendancePercent(ownAttendance) };
+      return { ...student, studentId: student.studentId || null, courseNames: [...courseIds].map((id) => courseMap.get(id)?.title || "Course unavailable").join(", ") || null, progress: percent(completed.size, totalAssignments.length), attendance: attendancePercent(ownAttendance), createdAt: isoDate(student.createdAt) };
     });
     return NextResponse.json({ students: rows });
   } catch (error) { return failure("student-list request", error); }
@@ -62,7 +63,7 @@ export async function POST(request) {
     createdUser = await access.auth.createUser({ email: normalizedEmail, password, displayName: displayName.trim(), disabled: false });
     try {
       const studentId = await nextStudentCode(access.db), now = FieldValue.serverTimestamp(), teacherIds = [...new Set([...(course.data().teacherIds || []), ...(selectedClass.teacherIds || [])])], batch = access.db.batch();
-      batch.create(access.db.collection("users").doc(createdUser.uid), { uid: createdUser.uid, studentId, email: createdUser.email || normalizedEmail, displayName: displayName.trim(), phone: phone.trim(), photoURL: "", role: "Student", active: true, teacherIds, createdAt: now, updatedAt: now });
+      batch.create(access.db.collection("users").doc(createdUser.uid), { uid: createdUser.uid, studentId, email: createdUser.email || normalizedEmail, displayName: displayName.trim(), phone: phone.trim(), photoURL: "", role: "Student", active: true, status: "active", teacherIds, createdAt: now, updatedAt: now });
       batch.create(access.db.collection("enrollments").doc(`${courseId}_${createdUser.uid}`), { courseId, classId: selectedClass.id, studentId: createdUser.uid, status: "active", enrolledAt: now, completedAt: null });
       await batch.commit(); return NextResponse.json({ uid: createdUser.uid, studentId }, { status: 201 });
     } catch (error) { try { await access.auth.deleteUser(createdUser.uid); } catch (rollbackError) { console.error("[students-api] rollback failed", { code: rollbackError?.code || "unknown" }); } throw error; }
@@ -74,11 +75,53 @@ export async function POST(request) {
 export async function PATCH(request) {
   try {
     const access = await requireManager(request); if (access.denied) return access.denied;
-    const { uid, displayName, phone, active } = await request.json(); if (!uid) return NextResponse.json({ message: "Student ID is required." }, { status: 400 });
+    const { uid, displayName, phone, active, status, rejectionReason } = await request.json(); if (!uid) return NextResponse.json({ message: "Student ID is required." }, { status: 400 });
     const ref = access.db.collection("users").doc(uid), profile = await ref.get(); if (!profile.exists || profile.data().role !== "Student") return NextResponse.json({ message: "Student not found." }, { status: 404 });
     if (typeof displayName === "string" && !displayName.trim()) return NextResponse.json({ message: "Full name is required." }, { status: 400 }); if (typeof phone === "string" && !phone.trim()) return NextResponse.json({ message: "Phone number is required." }, { status: 400 });
-    await ref.update({ ...(typeof displayName === "string" ? { displayName: displayName.trim() } : {}), ...(typeof phone === "string" ? { phone: phone.trim() } : {}), ...(typeof active === "boolean" ? { active } : {}), updatedAt: FieldValue.serverTimestamp() });
+    const wasPending = profile.data().status === "pending";
+    const approving = status === "active";
+    const rejecting = status === "rejected";
+    if ((approving || rejecting) && !wasPending) return NextResponse.json({ message: "Only a pending registration can be approved or rejected." }, { status: 400 });
+    await ref.update({
+      ...(typeof displayName === "string" ? { displayName: displayName.trim() } : {}),
+      ...(typeof phone === "string" ? { phone: phone.trim() } : {}),
+      ...(typeof active === "boolean" ? { active } : {}),
+      ...(approving ? { status: "active", approvedAt: FieldValue.serverTimestamp(), approvedBy: access.adminUid } : {}),
+      ...(rejecting
+        ? {
+            status: "rejected",
+            rejectedAt: FieldValue.serverTimestamp(),
+            rejectedBy: access.adminUid,
+            rejectionReason: typeof rejectionReason === "string" ? rejectionReason.trim().slice(0, 500) : "",
+          }
+        : {}),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     if (typeof displayName === "string" || typeof active === "boolean") await access.auth.updateUser(uid, { ...(typeof displayName === "string" ? { displayName: displayName.trim() } : {}), ...(typeof active === "boolean" ? { disabled: !active } : {}) });
+    if (approving) {
+      await access.db.collection("notifications").add({
+        userId: uid,
+        type: "account.approved",
+        title: "🎉 Account Approved",
+        body: "Your account has been approved. Welcome to Next Academy!",
+        entityId: uid,
+        actionUrl: null,
+        readAt: null,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    if (rejecting) {
+      await access.db.collection("notifications").add({
+        userId: uid,
+        type: "account.rejected",
+        title: "Registration Not Approved",
+        body: (typeof rejectionReason === "string" && rejectionReason.trim()) || "Your registration was not approved. Contact the academy for more information.",
+        entityId: uid,
+        actionUrl: null,
+        readAt: null,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
     return NextResponse.json({ ok: true });
   } catch (error) { return failure("student-profile update", error); }
 }
