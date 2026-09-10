@@ -289,7 +289,7 @@ export default function SettingsPage() {
             <div className="mt-3 space-y-3">
               <DisplayField label="Email" value={user?.email} />
               <DisplayField label="Title" value={profile?.role} />
-              <DisplayField label="Member ID" value={profile?.studentId} />
+              <DisplayField label="Member ID" value={profile?.userId} />
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-subtle">Account Status</p>
                 {profile?.status === "pending" ? (
@@ -327,7 +327,15 @@ export default function SettingsPage() {
                 Close
               </button>
             </div>
-            <IdCardPrint mode="self" roleLabel={profile?.role || "Member"} fallbackName={name} fallbackEmail={user?.email} />
+            <IdCardPrint
+              mode="self"
+              roleLabel={profile?.role || "Member"}
+              fallbackName={name}
+              fallbackEmail={user?.email}
+              photoURL={profile?.photoURL}
+              active={profile?.active}
+              status={profile?.status}
+            />
           </div>
         </div>
       )}

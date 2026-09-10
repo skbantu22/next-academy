@@ -141,6 +141,8 @@ function courseRow(course, teachers, classes, enrollments) {
     certificateEnabled: Boolean(course.certificateEnabled),
     certificateMinAttendance: course.certificateMinAttendance ?? null,
     certificateMinScore: course.certificateMinScore ?? null,
+    certificateTemplateId: course.certificateTemplateId || "",
+    certificateCode: course.certificateCode || "",
     enrolled: enrollments.filter((entry) => entry.courseId === course.id && entry.status !== "withdrawn").length,
     classCount: classes.filter((entry) => entry.courseId === course.id).length,
     createdAt: date(course.createdAt),
@@ -161,6 +163,26 @@ async function validateInstructors(db, body) {
     throw new Error("Choose only active users with the Teacher role.");
   }
   return { primaryTeacherId, assistantTeacherId, teacherIds: [...new Set(ids)] };
+}
+
+// Certificate settings reference the Achievement module's own template
+// storage — this is the ONLY place Course reads from Achievement (a
+// template id + a display code), never a second certificate system. When
+// enabled, a template MUST be chosen and MUST be active — silently
+// allowing "enabled, no template" would let a course later fail to issue
+// certificates with no admin ever having been told why.
+async function validateCertificateSettings(db, body) {
+  const certificateEnabled = Boolean(body.certificateEnabled);
+  const certificateTemplateId = typeof body.certificateTemplateId === "string" ? body.certificateTemplateId.trim() : "";
+  const certificateCode = text(body.certificateCode, 40);
+  if (certificateEnabled) {
+    if (!certificateTemplateId) throw new Error("Certificate is enabled — choose a certificate template, or turn Certificate Enabled off.");
+    const templateSnap = await db.collection("certificateTemplates").doc(certificateTemplateId).get();
+    if (!templateSnap.exists || templateSnap.data().status !== "active") {
+      throw new Error("The selected certificate template is not active. Choose an active template from Achievement.");
+    }
+  }
+  return { certificateTemplateId, certificateCode };
 }
 
 const text = (value, max) => {
@@ -305,6 +327,7 @@ export async function POST(request) {
     const body = await request.json();
     const fields = courseFields(body);
     const instructors = await validateInstructors(a.db, body);
+    const certificateSettings = await validateCertificateSettings(a.db, body);
     const courseCode = await nextCourseCode(a.db);
     const courseRef = a.db.collection("courses").doc();
     const classRef = a.db.collection("classes").doc();
@@ -313,6 +336,7 @@ export async function POST(request) {
     batch.set(courseRef, {
       ...fields,
       ...instructors,
+      ...certificateSettings,
       courseCode,
       primaryClassId: classRef.id,
       createdAt: now,
@@ -327,7 +351,7 @@ export async function POST(request) {
     });
     await batch.commit();
     return NextResponse.json(
-      { course: { id: courseRef.id, courseCode, primaryClassId: classRef.id, ...fields, ...instructors } },
+      { course: { id: courseRef.id, courseCode, primaryClassId: classRef.id, ...fields, ...instructors, ...certificateSettings } },
       { status: 201 },
     );
   } catch (error) {
@@ -347,8 +371,9 @@ export async function PATCH(request) {
     if (!snapshot.exists) return NextResponse.json({ message: "Training not found." }, { status: 404 });
     const fields = courseFields(body);
     const instructors = await validateInstructors(a.db, body);
+    const certificateSettings = await validateCertificateSettings(a.db, body);
     const batch = a.db.batch();
-    batch.update(ref, { ...fields, ...instructors, updatedAt: FieldValue.serverTimestamp() });
+    batch.update(ref, { ...fields, ...instructors, ...certificateSettings, updatedAt: FieldValue.serverTimestamp() });
     const primaryClassId = snapshot.data().primaryClassId;
     if (primaryClassId) {
       batch.update(a.db.collection("classes").doc(primaryClassId), {

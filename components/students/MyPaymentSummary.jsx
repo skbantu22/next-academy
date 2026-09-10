@@ -1,9 +1,66 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarClock, MapPin } from "lucide-react";
 import { useAuth } from "../../lib/auth-context";
 import { subscribeMyEnrollments, subscribeMyPayments } from "../../lib/student-data";
+import { subscribeMySessionsForClasses } from "../../lib/class-sessions-data";
+import { loadUsersByIds } from "../../lib/training-detail";
 import PaymentHistoryTable, { PaymentStatusBadge, formatMoney } from "../training/PaymentHistoryTable";
+
+function formatSessionDate(value) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+}
+
+// A student's upcoming offline classes — real, pre-scheduled Class
+// Sessions (see /api/class-sessions) for whichever classes they're
+// actually enrolled in, never a fake schedule. Only shown here in the
+// existing "My Training" view — no new student-facing page.
+function UpcomingClasses({ enrollments }) {
+  const classIds = useMemo(() => [...new Set(enrollments.map((item) => item.classId).filter(Boolean))], [enrollments]);
+  const classIdsKey = classIds.join(",");
+  const [sessions, setSessions] = useState([]);
+  const [teacherNames, setTeacherNames] = useState(new Map());
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- classIdsKey is the stable, correctly-derived dependency for the classIds array above
+  useEffect(() => subscribeMySessionsForClasses(classIds, setSessions, () => {}), [classIdsKey]);
+  useEffect(() => {
+    const ids = [...new Set(sessions.map((item) => item.teacherId).filter(Boolean))];
+    if (!ids.length) return;
+    let cancelled = false;
+    loadUsersByIds(ids).then((rows) => {
+      if (!cancelled) setTeacherNames(new Map(rows.map((row) => [row.id, row.displayName || row.email || row.id])));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessions]);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = sessions.filter((item) => item.date >= today && item.status !== "cancelled");
+  const courseTitleFor = (classId) => enrollments.find((item) => item.classId === classId)?.courseTitle || "Training";
+
+  if (!upcoming.length) return null;
+  return (
+    <div className="rounded-3xl border border-border-subtle bg-white p-5 shadow-sm">
+      <h3 className="mb-3 text-sm font-bold text-ink">Upcoming Class{upcoming.length > 1 ? "es" : ""}</h3>
+      <div className="space-y-2">
+        {upcoming.map((session) => (
+          <div key={session.id} className="rounded-xl bg-page p-3 text-xs">
+            <b className="block text-ink">{courseTitleFor(session.classId)} — {session.title}</b>
+            <span className="mt-1 flex flex-wrap items-center gap-3 text-muted">
+              <span className="flex items-center gap-1"><CalendarClock className="h-3 w-3" aria-hidden="true" /> {formatSessionDate(session.date)}{session.startTime && session.endTime ? ` · ${session.startTime}–${session.endTime}` : ""}</span>
+              {session.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" aria-hidden="true" /> {session.location}</span>}
+            </span>
+            {session.teacherId && <span className="mt-1 block text-muted">Teacher: {teacherNames.get(session.teacherId) || "—"}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // Read-only by design: a Student can view their own admission/payment
 // summary and history, but there is no edit/delete affordance anywhere in
@@ -51,6 +108,7 @@ export default function MyPaymentSummary() {
 
   return (
     <div className="space-y-4">
+      <UpcomingClasses enrollments={enrollments} />
       {enrollments.map((enrollment) => {
         const trainingFee = Number(enrollment.trainingFee) || 0;
         const discount = Number(enrollment.discount) || 0;

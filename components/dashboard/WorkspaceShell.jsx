@@ -31,7 +31,6 @@ function Brand() {
 // component's markup/classes in lockstep with Director's — this IS Director's
 // shell, just parameterized by role.
 export default function WorkspaceShell({
-  roleLabel,
   modules,
   active,
   getHref,
@@ -39,10 +38,6 @@ export default function WorkspaceShell({
   renderBadge,
   name,
   initials,
-  footerName,
-  footerEmail,
-  profileRoleLabel,
-  profileDescription,
   userEmail,
   headerTitle,
   headerSubtitle,
@@ -70,11 +65,6 @@ export default function WorkspaceShell({
           >
             ×
           </button>
-        </div>
-        <div className="border-b border-border-subtle px-5 py-4">
-          <span className="rounded bg-active px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-primary">
-            {roleLabel}
-          </span>
         </div>
         <nav className="flex-1 overflow-y-auto px-4 py-5">
           {modules.map((module) => {
@@ -109,23 +99,6 @@ export default function WorkspaceShell({
             );
           })}
         </nav>
-        <div className="border-t border-border-subtle p-4">
-          <div className="flex items-center gap-3">
-            <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-bold text-white">
-              {initials}
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-ink">{footerName}</p>
-              <p className="truncate text-xs text-muted">{footerEmail}</p>
-            </div>
-          </div>
-          <button
-            onClick={onLogout}
-            className="mt-4 w-full rounded-lg border border-border-subtle px-3 py-2.5 text-xs font-semibold text-muted hover:bg-active hover:text-primary"
-          >
-            Sign Out Session
-          </button>
-        </div>
       </aside>
       {mobileOpen && (
         <button

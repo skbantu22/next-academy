@@ -15,9 +15,14 @@ service cloud.firestore {
     function enrolledInClass(classId) { return signedIn() && exists(/databases/$(database)/documents/classes/$(classId)) && enrolledInCourse(get(/databases/$(database)/documents/classes/$(classId)).data.courseId) && get(/databases/$(database)/documents/enrollments/$(get(/databases/$(database)/documents/classes/$(classId)).data.courseId + '_' + request.auth.uid)).data.classId == classId; }
 
     match /users/{userId} {
-      allow create: if admin() || (signedIn() && request.auth.uid == userId && request.resource.data.uid == userId && request.resource.data.role == 'Student' && (!('status' in request.resource.data) || request.resource.data.status == 'pending'));
+      // `userId` (the unified, human-readable YYYYMMDD+4-digit User ID —
+      // lib/server/user-id.js) is always minted server-side via the Admin
+      // SDK, never by a client write: a self-registering client may not
+      // set it on create, and nobody (not even the account owner) may
+      // change it afterward, same as `uid`/`role`.
+      allow create: if admin() || (signedIn() && request.auth.uid == userId && request.resource.data.uid == userId && request.resource.data.role == 'Student' && !('userId' in request.resource.data) && (!('status' in request.resource.data) || request.resource.data.status == 'pending'));
       allow read: if signedIn() && (request.auth.uid == userId || admin() || (resource.data.role == 'Student' && resource.data.teacherIds.hasAny([request.auth.uid])));
-      allow update: if admin() || (signedIn() && request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'role', 'teacherIds', 'active', 'qrVersion', 'status']));
+      allow update: if admin() || (signedIn() && request.auth.uid == userId && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'role', 'teacherIds', 'active', 'qrVersion', 'status', 'userId']));
       allow delete: if admin();
     }
     match /classes/{classId} {
@@ -79,11 +84,61 @@ service cloud.firestore {
       allow update: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId && request.resource.data.classId == resource.data.classId && request.resource.data.studentId == resource.data.studentId);
       allow delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
     }
+    // A single dated/timed physical meeting of an existing class/batch
+    // (`classes/{classId}` already models the recurring batch — a session
+    // is one specific occurrence of it, which nothing in the existing
+    // schema modeled ahead of time). Reuses the exact same ownsClass()/
+    // enrolledInClass() helpers every other class-scoped collection here
+    // already uses — no new authorization primitive.
+    match /classSessions/{sessionId} {
+      allow read: if admin() || ownsClass(resource.data.classId) || enrolledInClass(resource.data.classId);
+      allow create: if admin() || ownsClass(request.resource.data.classId);
+      allow update, delete: if admin() || ownsClass(resource.data.classId);
+    }
     match /events/{eventId} {
       allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.classId != '' && enrolledInClass(resource.data.classId));
       allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && (request.resource.data.classId == '' || ownsClass(request.resource.data.classId)));
       allow update: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId && (request.resource.data.classId == '' || ownsClass(request.resource.data.classId)));
       allow delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
+    }
+    // Org-wide Event Management module (workshops, orientations, CSR, etc.)
+    // — distinct from `events/{eventId}` above, which is each Teacher's own
+    // per-class reminder list and must not be touched by this feature.
+    // Every mutation (create/update/delete/publish, registration,
+    // attendance) happens server-side via /api/admin/events and
+    // /api/events/* using the Admin SDK, which bypasses these rules —
+    // capacity/deadline/duplicate checks need a transaction and a
+    // subcollection count, neither of which a security rule can do safely.
+    // These rules are the direct-client-access backstop: Admin/Director get
+    // full read/write, everyone else gets read-only on published events
+    // (and their own participant record), and nobody gets a client write
+    // path at all, so a Student can never create/edit/delete/publish an
+    // event or another participant's registration/attendance no matter what
+    // the app code does.
+    match /academyEvents/{eventId} {
+      // The `published == true` branch has no signedIn() guard on purpose:
+      // it's what lets the public (signed-out) landing page's Event
+      // Calendar section read the same academyEvents collection the
+      // Director/Admin dashboard manages, live, with no separate public
+      // collection and no server API route. It only ever exposes docs the
+      // dashboard has explicitly published — drafts/unpublished events are
+      // still fully invisible to a public visitor.
+      allow read: if resource.data.published == true || admin() || (signedIn() && resource.data.organizerId == request.auth.uid);
+      allow write: if admin();
+      match /participants/{userId} {
+        allow read: if admin() || (signedIn() && request.auth.uid == userId);
+        allow write: if admin();
+      }
+    }
+    // AI Assistant audit trail (spec section 17). All writes happen
+    // server-side via /api/ai-assistant/audit (Admin SDK), which attaches
+    // the verified userId/userRole/timestamp itself — never trusted from
+    // the client — so this rule only governs direct client access
+    // attempts: Admin/Director see everything, everyone else only their
+    // own entries, and nobody has a client write path at all.
+    match /aiAuditLog/{logId} {
+      allow read: if admin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow write: if admin();
     }
     match /achievements/{achievementId} { allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid); allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && assignedStudent(request.resource.data.studentId)); allow update, delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId); }
     match /assessments/{assessmentId} { allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid); allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && assignedStudent(request.resource.data.studentId)); allow update, delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId); }
@@ -95,16 +150,52 @@ service cloud.firestore {
       // resource otherwise throws permission-denied instead of a clean
       // "not found," breaking that check for every non-admin caller. No data
       // is exposed by allowing this — a nonexistent doc has none.
+      //
+      // Chat was originally restricted to a Teacher and one of their
+      // assigned Students. Per the "New Chat: pick any registered user"
+      // requirement, direct 1:1 chat is now open between any two signed-in
+      // users — the assignedStudent()/teacherIds relationship check below
+      // was deliberately dropped for `create`. Group chat is new: creation
+      // is Admin/Director/Teacher only (teacher() branch below; admin()
+      // already covers Admin/Director), management is restricted to
+      // groupAdminIds, and any member may leave by removing only themself.
       allow read: if admin() || resource == null || (signedIn() && request.auth.uid in resource.data.participantIds);
-      allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && assignedStudent(request.resource.data.studentId) && request.auth.uid in request.resource.data.participantIds) || (role('Student') && request.resource.data.studentId == request.auth.uid && request.auth.uid in request.resource.data.participantIds && profile().teacherIds.hasAny([request.resource.data.teacherId]));
-      allow update: if admin() || (signedIn() && request.auth.uid in resource.data.participantIds && request.resource.data.participantIds == resource.data.participantIds && request.resource.data.teacherId == resource.data.teacherId && request.resource.data.studentId == resource.data.studentId);
+      allow create: if admin()
+        || (request.resource.data.type != 'group' && signedIn() && request.resource.data.participantIds.size() == 2 && request.auth.uid in request.resource.data.participantIds)
+        || (request.resource.data.type == 'group' && teacher() && request.resource.data.createdBy == request.auth.uid && request.auth.uid in request.resource.data.participantIds && request.resource.data.groupAdminIds.hasAny([request.auth.uid]) && request.resource.data.participantIds.size() >= 2 && request.resource.data.participantIds.size() <= 100);
+      allow update: if admin()
+        // Direct 1:1 — any participant may update shared fields (lastMessage/
+        // unreadCount/hiddenFor) but never participantIds/teacherId/studentId.
+        // resource.data.get('type','direct') (not resource.data.type) because
+        // every conversation created before this change has no `type` field
+        // at all — a bare .data.type there throws on those existing docs
+        // instead of falling through, which would otherwise silently break
+        // sending a message in any conversation started before today.
+        || (resource.data.get('type', 'direct') != 'group' && signedIn() && request.auth.uid in resource.data.participantIds && request.resource.data.participantIds == resource.data.participantIds && request.resource.data.teacherId == resource.data.teacherId && request.resource.data.studentId == resource.data.studentId)
+        // Group — any current member sending a message may update shared
+        // fields, but never membership, identity, or group profile fields.
+        || (resource.data.get('type', 'direct') == 'group' && signedIn() && request.auth.uid in resource.data.participantIds && request.resource.data.participantIds == resource.data.participantIds && request.resource.data.participantNames == resource.data.participantNames && request.resource.data.participantRoles == resource.data.participantRoles && request.resource.data.groupName == resource.data.groupName && request.resource.data.groupPhoto == resource.data.groupPhoto && request.resource.data.groupDescription == resource.data.groupDescription && request.resource.data.groupAdminIds == resource.data.groupAdminIds && request.resource.data.createdBy == resource.data.createdBy)
+        // Group admin — rename/change photo/description/add or remove any
+        // member/promote-demote admins. Identity fields stay immutable.
+        || (resource.data.get('type', 'direct') == 'group' && signedIn() && request.auth.uid in resource.data.groupAdminIds && request.resource.data.type == 'group' && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.participantIds.size() <= 100)
+        // Any group member leaving voluntarily — may only remove themself.
+        || (resource.data.get('type', 'direct') == 'group' && signedIn() && request.auth.uid in resource.data.participantIds && !(request.auth.uid in request.resource.data.participantIds) && request.resource.data.participantIds.size() == resource.data.participantIds.size() - 1 && request.resource.data.type == 'group' && request.resource.data.createdBy == resource.data.createdBy);
       allow delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
       match /messages/{messageId} {
         allow read: if admin() || (signedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds);
-        allow create: if admin() || (signedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds && request.resource.data.senderId == request.auth.uid && request.resource.data.receiverId in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds);
+        // Direct messages must name a real receiver among the participants
+        // (unchanged). Group messages instead carry no `receiverId` at all —
+        // unread/read tracking for groups lives only in the conversation
+        // doc's unreadCount map, not per-message, since a group message has
+        // many possible readers, not one. .get('type','direct') again, for
+        // the same pre-existing-conversation reason as above.
+        allow create: if admin() || (signedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds && request.resource.data.senderId == request.auth.uid && (request.resource.data.receiverId in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds || (get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('type', 'direct') == 'group' && !('receiverId' in request.resource.data))) && (!('type' in request.resource.data) || request.resource.data.type in ['text', 'image', 'audio', 'video', 'file']));
         // The sender may edit/remove their own message; the receiver may
         // only flip `readAt` (nothing else) to mark it read — required for
         // the read-receipt feature, since a receiver is never the sender.
+        // (Group messages have no single receiver, so this branch never
+        // applies to them — their unread state is tracked on the
+        // conversation doc instead.)
         allow update: if admin() || (signedIn() && resource.data.senderId == request.auth.uid) || (signedIn() && resource.data.receiverId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']) && request.resource.data.senderId == resource.data.senderId && request.resource.data.receiverId == resource.data.receiverId && request.resource.data.body == resource.data.body);
         allow delete: if admin() || (signedIn() && resource.data.senderId == request.auth.uid);
       }
@@ -126,6 +217,67 @@ service cloud.firestore {
     }
     match /notifications/{notificationId} { allow read, update, delete: if admin() || (signedIn() && resource.data.userId == request.auth.uid); allow create: if admin() || (signedIn() && request.resource.data.userId == request.auth.uid) || (teacher() && assignedStudent(request.resource.data.userId)) || (role('Student') && profile().teacherIds.hasAny([request.resource.data.userId])); }
     match /activities/{activityId} { allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.actorId == request.auth.uid); allow create: if admin() || (teacher() && request.resource.data.actorId == request.auth.uid && request.resource.data.teacherId == request.auth.uid); allow update, delete: if admin() || (teacher() && resource.data.actorId == request.auth.uid && resource.data.teacherId == request.auth.uid); }
+    // Public landing-page contact form: anyone (including a signed-out
+    // visitor) may create an inquiry, but only with exactly this shape —
+    // status locked to 'new', createdAt locked to the server clock, and
+    // every status timestamp forced null — so a visitor can never forge an
+    // already-read/replied/closed or backdated inquiry. Only Admin/Director
+    // may read the list, open one, or change its status; nobody may delete.
+    match /contactInquiries/{inquiryId} {
+      allow read, update: if admin();
+      allow create: if request.resource.data.keys().hasOnly(['name', 'email', 'role', 'topic', 'message', 'status', 'createdAt', 'readAt', 'repliedAt', 'closedAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 200
+        && request.resource.data.email is string && request.resource.data.email.size() > 0 && request.resource.data.email.size() <= 200
+        && request.resource.data.role is string && request.resource.data.role.size() <= 100
+        && request.resource.data.topic is string && request.resource.data.topic.size() <= 100
+        && request.resource.data.message is string && request.resource.data.message.size() > 0 && request.resource.data.message.size() <= 5000
+        && request.resource.data.status == 'new'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.readAt == null && request.resource.data.repliedAt == null && request.resource.data.closedAt == null;
+      allow delete: if false;
+    }
+    // My Shop (formerly the unimplemented "Gift" module). Any signed-in
+    // user (Student/Teacher/Volunteer/Admin/Director alike) may browse
+    // products; only Admin/Director may create/edit a product or change
+    // its stock directly — stock is otherwise only ever decremented
+    // server-side, inside a transaction, by /api/shop/checkout, which is
+    // why buyers never need a direct products write path at all.
+    match /products/{productId} {
+      allow read: if signedIn();
+      allow write: if admin();
+    }
+    // No existing category entity anywhere in this schema — one new
+    // collection, referenced from `products.categoryId`, is the single
+    // source of truth for shop categories. Same read/write shape as
+    // `products` itself (any signed-in user can read the live list to
+    // render Shop's tabs; only Admin/Director can write).
+    match /productCategories/{categoryId} {
+      allow read: if signedIn();
+      allow write: if admin();
+    }
+    // Orders are never created directly by a client: decrementing stock
+    // and creating the order must happen atomically in one transaction
+    // (same reasoning as academyEvents' capacity check), so every order is
+    // written server-side by /api/shop/checkout using the Admin SDK. These
+    // rules are purely the read/update backstop: Admin/Director see every
+    // order (for the "Orders" view inside My Shop); a buyer may only ever
+    // read their own; nobody gets a client write path.
+    match /orders/{orderId} {
+      allow read: if admin() || (signedIn() && resource.data.buyerId == request.auth.uid);
+      allow create: if false;
+      allow update, delete: if admin();
+    }
+    // Certificate templates live inside the Achievement module (no separate
+    // Certificate collection/module) and are managed by Admin/Director only.
+    // Teachers can read them (Certificate Settings needs the active list
+    // read-only from the client in a couple of places) but never write.
+    // Public certificate verification never reads this collection directly —
+    // it goes through app/api/verify/[certificateId] (Admin-SDK proxy), so no
+    // signed-out branch is needed here.
+    match /certificateTemplates/{templateId} {
+      allow read: if admin() || teacher();
+      allow write: if admin();
+    }
     match /{document=**} { allow read, write: if false; }
   }
 }

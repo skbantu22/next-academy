@@ -41,6 +41,8 @@ const blank = {
   certificateEnabled: false,
   certificateMinAttendance: "",
   certificateMinScore: "",
+  certificateTemplateId: "",
+  certificateCode: "",
 };
 const formatDate = (value) =>
   value ? new Date(value).toLocaleDateString() : "—";
@@ -298,6 +300,8 @@ export default function TrainingManagement({ role }) {
             certificateEnabled: Boolean(course.certificateEnabled),
             certificateMinAttendance: course.certificateMinAttendance ?? "",
             certificateMinScore: course.certificateMinScore ?? "",
+            certificateTemplateId: course.certificateTemplateId || "",
+            certificateCode: course.certificateCode || "",
           }
         : { ...blank },
     );
@@ -355,7 +359,7 @@ export default function TrainingManagement({ role }) {
   }
 
   return <div className="space-y-6">
-    <section className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-[#f3aaaa] bg-[linear-gradient(120deg,#fff0f0_0%,#fff7f7_45%,#ffffff_100%)] p-6 text-ink shadow-xl"><div><p className="text-[10px] font-bold uppercase tracking-widest text-primary">{role} workspace</p><h2 className="mt-2 text-3xl font-black">Training</h2><p className="mt-2 text-sm text-muted">{isTeacher ? "Your assigned offline classroom trainings." : "Manage offline classroom trainings, teachers, batches, and enrolled students."}</p></div>{data.canManage && <button type="button" onClick={() => open(null)} className="rounded-xl bg-primary px-4 py-3 text-xs font-bold text-white">Add Training</button>}</section>
+    <section className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-[#f3aaaa] bg-[linear-gradient(120deg,#fff0f0_0%,#fff7f7_45%,#ffffff_100%)] p-6 text-ink shadow-xl"><div><h2 className="text-3xl font-black">Training</h2><p className="mt-2 text-sm text-muted">{isTeacher ? "Your assigned offline classroom trainings." : "Manage offline classroom trainings, teachers, batches, and enrolled students."}</p></div>{data.canManage && <button type="button" onClick={() => open(null)} className="rounded-xl bg-primary px-4 py-3 text-xs font-bold text-white">Add Training</button>}</section>
     {notice && <p className="rounded-xl bg-success-soft p-4 text-sm text-success">{notice}</p>}
     {error && !editing && !adding && <p className="rounded-xl bg-active p-4 text-sm text-primary">{error}</p>}
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[["Total Training", counts.total], ["Active", counts.active], ["Upcoming", counts.upcoming], ["Total Enrolled", counts.enrolled]].map(([label, value]) => <article key={label} className="rounded-2xl border border-border-subtle bg-white p-5 shadow-sm"><p className="text-[10px] font-bold uppercase tracking-wider text-subtle">{label}</p><p className="mt-2 text-2xl font-extrabold">{loading ? "—" : value}</p></article>)}</section>

@@ -1,7 +1,8 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon } from "lucide-react";
 import EnrollmentManager from "./EnrollmentManager";
 import { stopEnterSubmit } from "../../lib/ui/keyboard";
+import { subscribeActiveCertificateTemplates } from "../../lib/achievement-data";
 
 const statuses = ["Draft", "Upcoming", "Active", "Completed", "Archived"];
 const levels = ["Beginner", "Intermediate", "Advanced"];
@@ -69,6 +70,10 @@ export default function TrainingForm({
   onThumbnailRemove,
 }) {
   const fileInputRef = useRef(null);
+  // Course only ever references Achievement's own active template list —
+  // read-only here, no template creation/editing from inside Training.
+  const [certificateTemplates, setCertificateTemplates] = useState([]);
+  useEffect(() => subscribeActiveCertificateTemplates(setCertificateTemplates, () => {}), []);
   const set = (key) => (event) => course.setForm({ ...course.form, [key]: event.target.value });
   const setChecked = (key) => (event) => course.setForm({ ...course.form, [key]: event.target.checked });
   const form = course.form;
@@ -265,6 +270,27 @@ export default function TrainingForm({
         </label>
         <Field label="Minimum Attendance % for Certificate" type="number" min="0" max="100" value={form.certificateMinAttendance} onChange={set("certificateMinAttendance")} disabled={!form.certificateEnabled} />
         <Field label="Minimum Passing Score for Certificate" type="number" min="0" max="100" value={form.certificateMinScore} onChange={set("certificateMinScore")} disabled={!form.certificateEnabled} />
+        <label className="grid gap-1 text-xs font-bold text-muted">
+          Certificate Template
+          <select
+            value={form.certificateTemplateId}
+            onChange={set("certificateTemplateId")}
+            disabled={!form.certificateEnabled}
+            className="rounded-xl border border-border-subtle px-3 py-2.5 text-sm font-normal outline-none focus:ring-2 focus:ring-primary disabled:bg-page disabled:text-subtle"
+          >
+            <option value="">Choose an active template from Achievement</option>
+            {certificateTemplates.map((template) => (
+              <option key={template.id} value={template.id}>{template.name} ({template.templateCode})</option>
+            ))}
+          </select>
+          {form.certificateEnabled && !form.certificateTemplateId && (
+            <span className="text-[11px] font-semibold text-primary">Certificate is enabled — choose a template, or certificates will not be issued.</span>
+          )}
+          {form.certificateEnabled && !certificateTemplates.length && (
+            <span className="text-[11px] font-semibold text-primary">No active templates yet — create one in Achievement → Templates first.</span>
+          )}
+        </label>
+        <Field label="Certificate Code (e.g. FSWD-2026)" value={form.certificateCode} onChange={set("certificateCode")} disabled={!form.certificateEnabled} />
       </Section>
 
       <div className="flex justify-end gap-3">

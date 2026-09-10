@@ -10,12 +10,16 @@ import {
   createTeacherCertificate,
   createTeacherEvent,
   deleteTeacherEvent,
+  checkCertificateEligibility,
   saveAttendance,
   subscribeTeacherDashboard,
   updateTeacherEvent,
   updateTeacherProfile,
 } from "../lib/teacher-data";
 import { db } from "../lib/firebase";
+import { ACHIEVEMENT_TYPES } from "../lib/achievement-shared";
+import AttendanceStatusPicker from "./training/AttendanceStatusPicker";
+import { subscribeCourseClassSessions } from "../lib/class-sessions-data";
 import TrainingManagement from "./training/TrainingManagement";
 import WorkspaceShell from "./dashboard/WorkspaceShell";
 import IdCardPrint from "./teacher/IdCardPrint";
@@ -35,6 +39,9 @@ import {
   subscribeTeacherPromotionLinks,
 } from "../lib/teacher-promote";
 import QRCode from "qrcode";
+import TeacherOrganizerEvents from "./events/TeacherOrganizerEvents";
+import StudentEvents from "./events/StudentEvents";
+import Shop from "./shop/Shop";
 
 // Sidebar nav is intentionally a fixed 9-item list per product spec — do not
 // add Promote/Notifications/etc. here. Their pages still exist and remain
@@ -44,6 +51,8 @@ const links = [
   "Students",
   "Training",
   "Event",
+  "Events",
+  "My Shop",
   "Documents",
   "Chat",
   "Achievement",
@@ -56,6 +65,8 @@ const paths = {
   Training: "/teacher/training",
   Attendance: "/teacher/attendance",
   Event: "/teacher/events",
+  Events: "/teacher/all-events",
+  "My Shop": "/teacher/shop",
   Achievement: "/teacher/achievements",
   Certificates: "/teacher/certificates",
   Chat: "/teacher/chat",
@@ -125,7 +136,6 @@ export function TeacherShell({ active, children, unread }) {
   const initials = name.slice(0, 2).toUpperCase();
   return (
     <WorkspaceShell
-      roleLabel="Teacher workspace"
       modules={links}
       active={active}
       getHref={(module) => paths[module]}
@@ -138,10 +148,6 @@ export function TeacherShell({ active, children, unread }) {
       }
       name={name}
       initials={initials}
-      footerName="TEACHER"
-      footerEmail={user?.email}
-      profileRoleLabel="Teacher"
-      profileDescription="Authenticated Teacher profile"
       userEmail={user?.email}
       headerTitle={active === "Dashboard" ? "Teacher Dashboard" : active}
       headerSubtitle="Classroom overview"
@@ -172,10 +178,7 @@ function DashboardView({ data }) {
   return (
     <div className="space-y-6">
       <div className="rounded-3xl border border-[#f3aaaa] bg-[linear-gradient(120deg,#fff0f0_0%,#fff7f7_45%,#ffffff_100%)] p-6 text-ink shadow-xl md:p-8">
-        <span className="rounded-full bg-active px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
-          Teacher workspace
-        </span>
-        <h2 className="mt-3 text-3xl font-extrabold">
+        <h2 className="text-3xl font-extrabold">
           Teacher Dashboard
         </h2>
         <p className="mt-2 text-xs text-muted">
@@ -269,7 +272,7 @@ function StudentsView({ data }) {
             <table className="w-full text-left text-xs">
               <thead className="border-b border-border-subtle text-[10px] uppercase tracking-wider text-subtle">
                 <tr>
-                  <th className="p-3">Student ID</th>
+                  <th className="p-3">User ID</th>
                   <th className="p-3">Student</th>
                   <th className="p-3">Contact</th>
                   <th className="p-3">Status</th>
@@ -280,7 +283,7 @@ function StudentsView({ data }) {
                 {rows.map((student) => (
                   <tr key={student.id} className="border-b border-border-subtle">
                     <td className="p-3 font-mono text-xs">
-                      {student.studentId || "—"}
+                      {student.userId || "—"}
                     </td>
                     <td className="p-3 font-semibold">
                       {student.displayName || "Unnamed student"}
@@ -374,6 +377,16 @@ function AttendanceView({ data, teacherId }) {
     }));
     await saveAttendance(teacherId, records);
     setMessage("Attendance saved.");
+    // Attendance just changed — re-check certificate eligibility for every
+    // student marked present/late in this class (never a manual request).
+    const courseId = data.classes.find((item) => item.id === classId)?.courseId || "";
+    if (courseId) {
+      students.forEach((student) => {
+        if (status[student.id] === "present" || status[student.id] === "late") {
+          checkCertificateEligibility(student.id, courseId);
+        }
+      });
+    }
   }
   return (
     <Panel
@@ -411,21 +424,13 @@ function AttendanceView({ data, teacherId }) {
             {students.map((student) => (
               <div
                 key={student.id}
-                className="flex items-center justify-between rounded-xl bg-page p-3 text-xs"
+                className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-page p-3 text-xs sm:flex-row sm:items-center sm:justify-between"
               >
                 <b>{student.displayName || student.email}</b>
-                <select
+                <AttendanceStatusPicker
                   value={status[student.id] || "present"}
-                  onChange={(event) =>
-                    setStatus({ ...status, [student.id]: event.target.value })
-                  }
-                  className="rounded-lg border border-border-subtle bg-white px-2 py-1"
-                >
-                  <option value="present">Present</option>
-                  <option value="absent">Absent</option>
-                  <option value="late">Late</option>
-                  <option value="excused">Excused</option>
-                </select>
+                  onChange={(value) => setStatus({ ...status, [student.id]: value })}
+                />
               </div>
             ))}
           </div>
@@ -457,6 +462,7 @@ function EventsView({ data, teacherId }) {
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState(null);
   const [message, setMessage] = useState("");
+  const [section, setSection] = useState("My Reminders");
   async function save() {
     if (editing) await updateTeacherEvent(editing, teacherId, form);
     else await createTeacherEvent(teacherId, form);
@@ -465,6 +471,22 @@ function EventsView({ data, teacherId }) {
     setMessage("Event saved.");
   }
   return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        {["My Reminders", "Academy Events"].map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setSection(item)}
+            className={`rounded-full px-4 py-2 text-xs font-bold transition ${section === item ? "bg-primary text-white" : "bg-page text-muted hover:bg-active hover:text-primary"}`}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+      {section === "Academy Events" ? (
+        <TeacherOrganizerEvents teacherId={teacherId} />
+      ) : (
     <div className="grid gap-4 lg:grid-cols-[.75fr_1fr]">
       <Panel title={editing ? "Edit event" : "Create event"}>
         <div className="grid gap-3">
@@ -547,6 +569,8 @@ function EventsView({ data, teacherId }) {
         )}
       </Panel>
     </div>
+      )}
+    </div>
   );
 }
 
@@ -572,6 +596,7 @@ function studentLabel(students, studentId) {
 }
 function AchievementsView({ data, teacherId }) {
   const [title, setTitle] = useState("");
+  const [type, setType] = useState(ACHIEVEMENT_TYPES[0]);
   const [studentId, setStudentId] = useState("");
   async function create() {
     if (!title || !studentId) return;
@@ -579,6 +604,7 @@ function AchievementsView({ data, teacherId }) {
     await createTeacherAchievement(teacherId, {
       title,
       description: "",
+      type,
       studentId,
       classId: student?.classId || "",
     });
@@ -595,6 +621,15 @@ function AchievementsView({ data, teacherId }) {
             value={studentId}
             onChange={setStudentId}
           />
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+            className="rounded-xl border border-border-subtle px-3 py-2 text-xs"
+          >
+            {ACHIEVEMENT_TYPES.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -616,7 +651,7 @@ function AchievementsView({ data, teacherId }) {
           <div key={item.id} className="border-b border-border-subtle py-3">
             <b>{item.title}</b>
             <span className="ml-3 text-xs text-muted">
-              {studentLabel(data.students, item.studentId)}
+              {studentLabel(data.students, item.studentId)} · {item.type ? item.type.replace(/_/g, " ") : "Achievement"}
             </span>
           </div>
         ))
@@ -669,11 +704,23 @@ function CertificatesView({ data, teacherId }) {
     >
       {data.certificates.length ? (
         data.certificates.map((item) => (
-          <div key={item.id} className="border-b border-border-subtle py-3">
-            <b>{item.title}</b>
-            <span className="ml-3 text-xs text-muted">
-              {studentLabel(data.students, item.studentId)} · {item.certificateId || item.id} · {item.status}
-            </span>
+          <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle py-3">
+            <div>
+              <b>{item.title}</b>
+              <span className="ml-3 text-xs text-muted">
+                {studentLabel(data.students, item.studentId)} · {item.certificateCode || item.certificateId || item.id} · {item.status === "revoked" ? "Revoked" : "Active"}
+              </span>
+            </div>
+            {item.status !== "revoked" && (
+              <a
+                href={`/api/certificates/${item.id}/pdf`}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-bold text-ink hover:bg-active"
+              >
+                View
+              </a>
+            )}
           </div>
         ))
       ) : (
@@ -962,6 +1009,20 @@ const SCANNER_ELEMENT_ID = "teacher-qr-scanner";
 
 function ScanQrView({ data }) {
   const [classId, setClassId] = useState(data.classes[0]?.id || "");
+  const [sessionId, setSessionId] = useState("");
+  // Optional: today's real scheduled sessions for the selected class, so a
+  // scan can be tagged with the correct session/location — see
+  // /api/class-sessions. Falls back to plain class-only scanning (exactly
+  // as before) when nothing is scheduled.
+  const [sessions, setSessions] = useState([]);
+  const courseIdForClass = data.classes.find((item) => item.id === classId)?.courseId || "";
+  useEffect(() => {
+    if (!courseIdForClass) return undefined;
+    return subscribeCourseClassSessions(courseIdForClass, setSessions, () => {});
+  }, [courseIdForClass]);
+  // Filtered by the current classId rather than reset in the effect above
+  // (no course selected simply means classId won't match anything here).
+  const todaySessions = sessions.filter((item) => item.classId === classId && item.date === new Date().toISOString().slice(0, 10) && item.status !== "cancelled");
   const [scanning, setScanning] = useState(false);
   const [manualToken, setManualToken] = useState("");
   const [busy, setBusy] = useState(false);
@@ -974,7 +1035,7 @@ function ScanQrView({ data }) {
     setBusy(true);
     setResult(null);
     try {
-      const response = await scanAttendanceQr({ token, classId });
+      const response = await scanAttendanceQr({ token, classId, ...(sessionId ? { sessionId } : {}) });
       setResult({ ok: true, ...response });
     } catch (error) {
       setResult({ ok: false, message: error.message });
@@ -1021,18 +1082,37 @@ function ScanQrView({ data }) {
       <Panel
         title="Scan a student QR code"
         action={
-          <select
-            value={classId}
-            onChange={(event) => setClassId(event.target.value)}
-            className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs"
-          >
-            <option value="">Select class</option>
-            {data.classes.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name || item.id}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={classId}
+              onChange={(event) => {
+                setClassId(event.target.value);
+                setSessionId("");
+              }}
+              className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs"
+            >
+              <option value="">Select class</option>
+              {data.classes.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name || item.id}
+                </option>
+              ))}
+            </select>
+            {classId && todaySessions.length > 0 && (
+              <select
+                value={sessionId}
+                onChange={(event) => setSessionId(event.target.value)}
+                className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs"
+              >
+                <option value="">No specific session</option>
+                {todaySessions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title} · {item.startTime}–{item.endTime}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         }
       >
         {!classId ? (
@@ -1078,11 +1158,16 @@ function ScanQrView({ data }) {
         ) : !result ? (
           <Empty>Scan a QR code to see the result here.</Empty>
         ) : result.ok ? (
-          <div className={`rounded-2xl p-4 text-sm ${result.code === "already_marked" ? "bg-warning-soft text-warning" : "bg-success-soft text-success"}`}>
+          <div className={`rounded-2xl p-4 text-sm ${result.code === "already_checked_out" ? "bg-warning-soft text-warning" : "bg-success-soft text-success"}`}>
             <b className="block">{result.message}</b>
             {result.student && (
               <p className="mt-2 text-xs">
                 {result.student.displayName || result.student.email}
+              </p>
+            )}
+            {result.code === "checked_out" && typeof result.durationMinutes === "number" && (
+              <p className="mt-1 text-xs font-semibold">
+                Session length: {Math.floor(result.durationMinutes / 60)}h {result.durationMinutes % 60}m
               </p>
             )}
           </div>
@@ -1151,6 +1236,10 @@ export default function TeacherWorkspacePage({ module = "Dashboard" }) {
     <AttendanceView data={data} teacherId={user.uid} />
   ) : module === "Event" ? (
     <EventsView data={data} teacherId={user.uid} />
+  ) : module === "Events" ? (
+    <StudentEvents />
+  ) : module === "My Shop" ? (
+    <Shop role="Teacher" uid={user.uid} />
   ) : module === "Achievement" ? (
     <AchievementsView data={data} teacherId={user.uid} />
   ) : module === "Certificates" ? (
@@ -1177,6 +1266,9 @@ export default function TeacherWorkspacePage({ module = "Dashboard" }) {
         roleLabel="Teacher"
         fallbackName={profile?.displayName || user.email}
         fallbackEmail={user.email}
+        photoURL={profile?.photoURL}
+        active={profile?.active}
+        status={profile?.status}
       />
     </Panel>
   ) : module === "Scan QR Code" ? (

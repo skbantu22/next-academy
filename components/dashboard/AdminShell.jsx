@@ -42,6 +42,7 @@ export default function AdminShell({
   headerTitle,
   onLogout,
   children,
+  badges = {},
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -81,6 +82,11 @@ export default function AdminShell({
                 {module === "Chat" && unreadChat > 0 && (
                   <b className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] text-white">
                     {unreadChat > 9 ? "9+" : unreadChat}
+                  </b>
+                )}
+                {module !== "Chat" && badges[module] > 0 && (
+                  <b className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] text-white">
+                    {badges[module] > 9 ? "9+" : badges[module]}
                   </b>
                 )}
               </>

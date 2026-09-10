@@ -64,7 +64,7 @@ function EnrollStudentModal({ allStudents, capacityFull, onEnroll, close }) {
   const [error, setError] = useState("");
 
   const filtered = allStudents.filter((student) =>
-    `${student.displayName} ${student.email} ${student.studentCode}`.toLowerCase().includes(search.trim().toLowerCase()),
+    `${student.displayName} ${student.email} ${student.userId}`.toLowerCase().includes(search.trim().toLowerCase()),
   );
 
   async function handleEnroll(student) {
@@ -104,7 +104,7 @@ function EnrollStudentModal({ allStudents, capacityFull, onEnroll, close }) {
             <div key={student.id} className="flex items-center justify-between rounded-xl bg-page p-3 text-xs">
               <div className="min-w-0">
                 <b className="block truncate">{student.displayName || "Unnamed student"}</b>
-                <span className="text-muted">{student.studentCode} · {student.email}</span>
+                <span className="text-muted">{student.userId} · {student.email}</span>
               </div>
               {student.alreadyEnrolled ? (
                 <span className="shrink-0 rounded-full bg-page px-3 py-1.5 text-[10px] font-bold text-muted">Already Enrolled</span>
@@ -157,7 +157,7 @@ function AdmissionDetailModal({ student, courseTitle, courseCode, showPayments, 
   return (
     <Dialog title="Admission Details" close={close}>
       <dl className="grid gap-3 text-sm">
-        <div><dt className="text-xs text-subtle">Student ID</dt><dd>{student.studentCode}</dd></div>
+        <div><dt className="text-xs text-subtle">User ID</dt><dd>{student.userId}</dd></div>
         <div><dt className="text-xs text-subtle">Name</dt><dd>{student.displayName || "—"}</dd></div>
         <div><dt className="text-xs text-subtle">Email</dt><dd>{student.email || "—"}</dd></div>
         <div><dt className="text-xs text-subtle">Phone</dt><dd>{student.phone || "—"}</dd></div>
@@ -378,7 +378,7 @@ export default function EnrollmentManager({ mode, courseId, courseTitle, courseC
   const full = isFull(enrolledCount, capacity);
 
   const filteredRows = rows.filter((row) =>
-    `${row.displayName} ${row.email} ${row.studentCode}`.toLowerCase().includes(search.trim().toLowerCase()),
+    `${row.displayName} ${row.email} ${row.userId}`.toLowerCase().includes(search.trim().toLowerCase()),
   );
 
   async function handleEnroll(studentId) {
@@ -451,7 +451,7 @@ export default function EnrollmentManager({ mode, courseId, courseTitle, courseC
             <thead className="border-b text-[10px] uppercase tracking-wider text-subtle">
               <tr>
                 {[
-                  "Student ID",
+                  "User ID",
                   "Name",
                   "Email",
                   "Phone",
@@ -468,7 +468,7 @@ export default function EnrollmentManager({ mode, courseId, courseTitle, courseC
             <tbody>
               {filteredRows.map((row) => (
                 <tr key={row.studentId} className="border-b border-border-subtle">
-                  <td className="p-3 font-mono text-xs">{row.studentCode}</td>
+                  <td className="p-3 font-mono text-xs">{row.userId}</td>
                   <td className="p-3"><b>{row.displayName || "Unnamed student"}</b></td>
                   <td className="p-3 text-xs text-muted">{row.email}</td>
                   <td className="p-3 text-xs text-muted">{row.phone || "—"}</td>

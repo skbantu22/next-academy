@@ -44,7 +44,7 @@ export default function AdmissionsManagement() {
       admissions.filter(
         (item) =>
           (statusFilter === "All" || item.paymentStatus === statusFilter) &&
-          `${item.studentName} ${item.studentCode}`.toLowerCase().includes(studentSearch.trim().toLowerCase()) &&
+          `${item.studentName} ${item.userId}`.toLowerCase().includes(studentSearch.trim().toLowerCase()) &&
           `${item.courseTitle} ${item.courseCode}`.toLowerCase().includes(trainingSearch.trim().toLowerCase()),
       ),
     [admissions, statusFilter, studentSearch, trainingSearch],
@@ -134,7 +134,7 @@ export default function AdmissionsManagement() {
                   <tr key={item.enrollmentId} className="border-b border-border-subtle">
                     <td className="p-3">
                       <b className="block">{item.studentName}</b>
-                      <span className="text-xs text-muted">{item.studentCode}</span>
+                      <span className="text-xs text-muted">{item.userId}</span>
                     </td>
                     <td className="p-3">
                       <b className="block">{item.courseTitle}</b>

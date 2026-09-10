@@ -59,7 +59,7 @@ export default function ReportsTab() {
     return [...paidMap.entries()]
       .map(([studentId, total]) => {
         const sample = payments.find((p) => p.studentId === studentId);
-        return { studentId, studentName: sample?.studentName, studentCode: sample?.studentCode, total };
+        return { studentId, studentName: sample?.studentName, userId: sample?.userId, total };
       })
       .sort((a, b) => b.total - a.total);
   }, [payments]);
@@ -168,12 +168,12 @@ export default function ReportsTab() {
 
             {reportType === "Student Payment Report" && (
               <table className="w-full min-w-[500px] text-left text-sm">
-                <thead className="border-b text-[10px] uppercase tracking-wider text-subtle"><tr>{["Student", "Student ID", "Total Paid"].map((l) => <th key={l} className="p-3">{l}</th>)}</tr></thead>
+                <thead className="border-b text-[10px] uppercase tracking-wider text-subtle"><tr>{["Student", "User ID", "Total Paid"].map((l) => <th key={l} className="p-3">{l}</th>)}</tr></thead>
                 <tbody>
                   {studentSummary.map((row) => (
                     <tr key={row.studentId} className="border-b border-border-subtle">
                       <td className="p-3 text-xs">{row.studentName}</td>
-                      <td className="p-3 text-xs text-muted">{row.studentCode}</td>
+                      <td className="p-3 text-xs text-muted">{row.userId}</td>
                       <td className="p-3 text-xs font-bold text-success">{formatMoney(row.total)}</td>
                     </tr>
                   ))}

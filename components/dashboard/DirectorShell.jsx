@@ -42,6 +42,7 @@ export default function DirectorShell({
   headerSubtitle,
   onLogout,
   children,
+  badges = {},
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -75,6 +76,11 @@ export default function DirectorShell({
                   <SidebarIcon name={module} className="h-6 w-6" />
                 </span>
                 {module}
+                {badges[module] > 0 && (
+                  <b className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] text-white">
+                    {badges[module] > 9 ? "9+" : badges[module]}
+                  </b>
+                )}
               </>
             );
             const href = getHref?.(module);

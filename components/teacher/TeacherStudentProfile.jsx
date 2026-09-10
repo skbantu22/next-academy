@@ -118,7 +118,7 @@ export default function TeacherStudentProfile() {
               <header className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-[#f3aaaa] bg-[linear-gradient(120deg,#fff0f0_0%,#fff7f7_45%,#ffffff_100%)] p-6 text-ink shadow-xl md:p-8">
                 <div>
                   <p className="font-mono text-[10px] uppercase tracking-widest text-primary">
-                    {student.studentId || "—"} · Student profile
+                    {student.userId || "—"} · Student profile
                   </p>
                   <h1 className="mt-3 text-2xl font-black md:text-4xl">
                     {student.displayName || "Unnamed student"}

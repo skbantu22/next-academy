@@ -38,6 +38,66 @@ service firebase.storage {
       allow read: if true;
       allow write, delete: if thumbnailAdmin() || ownsCourse(courseId);
     }
+    // Chat media. conversationId is already deterministic — two sorted
+    // participant UIDs joined by "_" (see lib/chat-data.js) — so
+    // authorization here is pure string matching on the path itself,
+    // never a firestore.get() lookup, which is the one mechanism verified
+    // above to be unreliable from Storage Rules in this project. This is
+    // deliberate, not an oversight: Admin/Director do NOT get a blanket
+    // bypass on chat media (unlike Firestore's conversations/messages
+    // rules, which are same-service and unaffected) — they can only reach
+    // a conversation's media by actually being one of its two participants.
+    match /chat/{conversationId}/{messageId}/{fileName} {
+      allow read, delete: if signedIn() && request.auth.uid in conversationId.split('_');
+      allow create: if signedIn() && request.auth.uid in conversationId.split('_')
+        && request.resource.size < 100 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|audio/.*|video/.*');
+    }
+    // Group chat photos. A group's conversationId is a random Firestore doc
+    // ID (not a deterministic sorted-participant join like a direct
+    // conversation's), so the chat/{conversationId}/... path-based trick
+    // below can't authorize this the same way, and a Firestore membership
+    // check from here hits the same broken cross-service lookup documented
+    // above. Uploaded server-side via /api/chat/group-photo instead (Admin
+    // SDK, verifies the caller is one of the group's groupAdminIds with a
+    // same-service Firestore read) — no client write path needed or allowed.
+    match /chat-groups/{conversationId}/photo/{fileName} {
+      allow read: if true;
+      allow write, delete: if false;
+    }
+    // Event banners. Unlike course thumbnails (client-uploaded, gated by the
+    // hardcoded thumbnailAdminUids() allowlist below because the real
+    // Admin/Director role check can't cross into Firestore from here), event
+    // banners are uploaded server-side via /api/admin/events/banner using
+    // the Admin SDK — that route already re-verifies Admin/Director via a
+    // same-service Firestore read before it touches Storage, so no
+    // client write path is needed or allowed here at all.
+    match /academyEvents/{eventId}/banner/{fileName} {
+      allow read: if true;
+      allow write, delete: if false;
+    }
+    // My Shop product images — same reasoning and pattern as the event
+    // banner block above: uploaded server-side via
+    // /api/admin/shop/products/image using the Admin SDK, which
+    // re-verifies Admin/Director with a same-service Firestore read
+    // before touching Storage, so no client write path is needed here.
+    match /products/{productId}/image/{fileName} {
+      allow read: if true;
+      allow write, delete: if false;
+    }
+    // Category images — same reasoning as products above.
+    match /productCategories/{categoryId}/image/{fileName} {
+      allow read: if true;
+      allow write, delete: if false;
+    }
+    // Certificate template backgrounds — same reasoning as products/events:
+    // Storage Rules can't reliably cross-reference Firestore roles here, so
+    // all writes go through the Admin-SDK-proxied upload route and the
+    // object is made public at upload time; the client never writes here.
+    match /certificateTemplates/{templateId}/{fileName} {
+      allow read: if true;
+      allow write, delete: if false;
+    }
     match /{allPaths=**} {
       allow read, write: if false;
     }

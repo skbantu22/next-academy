@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
+import AttendanceStatusPicker from "./AttendanceStatusPicker";
+import ClassSessionsPanel from "./ClassSessionsPanel";
+import { subscribeCourseClassSessions } from "../../lib/class-sessions-data";
 import {
   listClassEnrollments,
   saveAttendance,
@@ -25,10 +28,13 @@ import {
   createAssessment,
   subscribeCourseAssessments,
 } from "../../lib/teacher-assessments";
+import { checkCertificateEligibility } from "../../lib/teacher-data";
 import { stopEnterSubmit } from "../../lib/ui/keyboard";
 import { TeacherShell } from "../TeacherWorkspacePage";
 import DirectorShell from "../dashboard/DirectorShell";
 import AdminShell from "../dashboard/AdminShell";
+import WorkspaceShell from "../dashboard/WorkspaceShell";
+import Spinner from "../ui/Spinner";
 import EnrollmentManager from "./EnrollmentManager";
 
 // Same Admin/Director module list used by app/dashboard/[role]/page.jsx's
@@ -44,7 +50,7 @@ const managerModules = [
   "Event",
   "Finance",
   "Documents",
-  "Gift",
+  "My Shop",
   "User",
   "Chat",
   "Achievement",
@@ -244,9 +250,7 @@ export default function TrainingDetailsPage() {
         ← Back to Training
       </Link>
       {authLoading || loading ? (
-        <div className="mt-6">
-          <Empty>Loading training...</Empty>
-        </div>
+        <Spinner label="Loading training..." className="mt-6" />
       ) : error ? (
         <div className="mt-6">
           <Empty>{error}</Empty>
@@ -340,6 +344,9 @@ export default function TrainingDetailsPage() {
                       : "Disabled"
                   }
                 />
+                {course.certificateEnabled && (
+                  <Field label="Certificate Code" value={course.certificateCode || "—"} />
+                )}
               </dl>
             </Panel>
           )}
@@ -350,17 +357,21 @@ export default function TrainingDetailsPage() {
             <Panel title="Classes / Batches">
               {classes.length ? (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {classes.map((item, index) => (
+                  {classes.map((item) => (
                     <div
                       key={item.id}
                       className="rounded-2xl border border-border-subtle p-4"
                     >
-                      <div className="flex items-center justify-between">
-                        <b className="block text-sm">{item.name || "Batch"}</b>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-subtle">
-                          Class {index + 1}
-                        </span>
-                      </div>
+                      {/* The batch/group record's own real name is the
+                          title here — no synthetic "Class {n}"/"Batch {n}"
+                          ordinal tag. That tag used to read "Class {n}",
+                          which collided with the unrelated real Class
+                          Session feature below (ClassSessionsPanel) and
+                          made this purely cosmetic, non-editable label
+                          look like a phantom, action-less "Class 1"
+                          session. Removed; no data changed, `index` is no
+                          longer needed here. */}
+                      <b className="block text-sm">{item.name || "Batch"}</b>
                       <span className="text-xs text-muted">
                         {[item.campus, item.building, item.floor, item.room]
                           .filter(Boolean)
@@ -386,6 +397,15 @@ export default function TrainingDetailsPage() {
                 </div>
               ) : (
                 <Empty>No classes found for this training</Empty>
+              )}
+              {classes.length > 0 && (
+                <ClassSessionsPanel
+                  course={course}
+                  classes={classes}
+                  canManage={canManage}
+                  isAssignedTeacher={isAssignedTeacher}
+                  currentUid={user?.uid}
+                />
               )}
             </Panel>
           )}
@@ -420,8 +440,19 @@ export default function TrainingDetailsPage() {
               classes={classes}
               students={students}
               attendance={attendance}
-              teacherId={user?.uid}
-              canMark={isAssignedTeacher}
+              // Director/Admin can already manage everything else on this
+              // page (Students, Training, Assessment) — Attendance was the
+              // one tab where the mark-attendance grid was gated to an
+              // assigned Teacher only, even though canManage() already
+              // grants full access here and the existing `attendance`
+              // Firestore rule already has an unconditional admin() branch.
+              // When Director/Admin marks it, `teacherId` is recorded as
+              // the course's real assigned teacher (not the Director's own
+              // uid) so the record still shows up correctly in that
+              // teacher's own dashboard/attendance views — same field,
+              // same collection, no new attendance system.
+              teacherId={isAssignedTeacher ? user?.uid : (course.primaryTeacherId || user?.uid)}
+              canMark={isAssignedTeacher || canManage}
             />
           )}
           {tab === "Assessment" && (
@@ -457,6 +488,35 @@ export default function TrainingDetailsPage() {
   // alone sits flush to the shell's edges, without touching the shell
   // itself (every other page under that shell still relies on its px-4).
   const paddedBody = <div className="-mx-4">{body}</div>;
+
+  // While auth/profile is still resolving (only ever happens for a moment
+  // on a hard refresh/direct link to this page — client-side navigation
+  // from inside an already-signed-in dashboard has `profile` cached and
+  // skips this entirely), `profile?.role` isn't known yet, so none of the
+  // three role branches below can be picked correctly. Previously this fell
+  // through to a bare, shell-less <main> — a real full-screen loading flash
+  // with no sidebar/header. WorkspaceShell is the exact same base every
+  // real shell below already renders on top of (TeacherShell/DirectorShell/
+  // AdminShell are all thin wrappers around it), so showing it here first
+  // means the sidebar/header chrome is present immediately and never pops
+  // in — only its nav items/name fill in once the real role is known, a
+  // moment later, when one of the branches below takes over.
+  if (authLoading) {
+    return (
+      <WorkspaceShell
+        modules={[]}
+        active="Training"
+        name=""
+        initials=""
+        userEmail=""
+        headerTitle="Training"
+        headerSubtitle="Loading..."
+        onLogout={logout}
+      >
+        {paddedBody}
+      </WorkspaceShell>
+    );
+  }
 
   if (profile?.role === "Teacher") {
     return <TeacherShell active="Training">{paddedBody}</TeacherShell>;
@@ -556,8 +616,6 @@ function TeachersTab({ course }) {
   );
 }
 
-const attendanceStatuses = ["present", "absent", "late", "excused"];
-
 function AttendanceTab({
   courseId,
   classes,
@@ -566,15 +624,28 @@ function AttendanceTab({
   teacherId,
   canMark,
 }) {
+  // Optional: pick a real, pre-scheduled Class Session instead of a
+  // freeform class+date — auto-fills class/date/location and tags the
+  // saved attendance records with sessionId, so they're associated with
+  // the correct real session (per the offline-class feature). The manual
+  // class+date pickers below are kept exactly as before for ad-hoc
+  // marking when no session was scheduled in advance.
+  const [sessions, setSessions] = useState([]);
+  useEffect(() => subscribeCourseClassSessions(courseId, setSessions, () => {}), [courseId]);
+  const [sessionId, setSessionId] = useState("");
+  const selectedSession = sessions.find((item) => item.id === sessionId) || null;
+
   const [manualClassId, setManualClassId] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   // Derived, not synced via an effect: whenever `classes` loads or changes,
   // this simply falls back to the first class until the user manually picks
   // one — no setState-during-render/effect needed.
-  const classId =
-    manualClassId && classes.some((item) => item.id === manualClassId)
+  const classId = selectedSession
+    ? selectedSession.classId
+    : manualClassId && classes.some((item) => item.id === manualClassId)
       ? manualClassId
       : classes[0]?.id || "";
+  const effectiveDate = selectedSession ? selectedSession.date : date;
 
   const rate = useMemo(() => {
     return students.reduce((result, student) => {
@@ -602,11 +673,26 @@ function AttendanceTab({
       title="Attendance"
       action={
         canMark && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {sessions.length > 0 && (
+              <select
+                value={sessionId}
+                onChange={(event) => setSessionId(event.target.value)}
+                className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs"
+              >
+                <option value="">Manual (pick class + date below)</option>
+                {sessions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title} · {item.date}
+                  </option>
+                ))}
+              </select>
+            )}
             <select
               value={classId}
               onChange={(event) => setManualClassId(event.target.value)}
-              className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs"
+              disabled={Boolean(selectedSession)}
+              className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs disabled:opacity-50"
             >
               {classes.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -616,10 +702,11 @@ function AttendanceTab({
             </select>
             <input
               type="date"
-              value={date}
+              value={effectiveDate}
               onChange={(event) => setDate(event.target.value)}
+              disabled={Boolean(selectedSession)}
               onKeyDown={stopEnterSubmit}
-              className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs"
+              className="rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs disabled:opacity-50"
             />
           </div>
         )
@@ -633,10 +720,12 @@ function AttendanceTab({
         <>
           {canMark && (
             <AttendanceMarkGrid
-              key={`${classId}_${date}`}
+              key={`${classId}_${effectiveDate}_${sessionId}`}
               courseId={courseId}
               classId={classId}
-              date={date}
+              date={effectiveDate}
+              sessionId={selectedSession?.id || null}
+              location={selectedSession?.location || ""}
               students={students}
               attendance={attendance}
               teacherId={teacherId}
@@ -679,6 +768,8 @@ function AttendanceMarkGrid({
   courseId,
   classId,
   date,
+  sessionId,
+  location,
   students,
   attendance,
   teacherId,
@@ -709,6 +800,10 @@ function AttendanceMarkGrid({
           studentId: student.id,
           date,
           status: statuses[student.id] || "present",
+          // Only set when marking against a real, pre-scheduled Class
+          // Session — plain manual marking (no session picked) keeps
+          // writing the exact same record shape as before this feature.
+          ...(sessionId ? { sessionId, location: location || "" } : {}),
         })),
       );
       setMessage("Attendance saved.");
@@ -724,22 +819,13 @@ function AttendanceMarkGrid({
       {students.map((student) => (
         <div
           key={student.id}
-          className="flex items-center justify-between rounded-xl bg-page p-3 text-xs"
+          className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-page p-3 text-xs sm:flex-row sm:items-center sm:justify-between"
         >
           <b>{student.displayName || student.email}</b>
-          <select
+          <AttendanceStatusPicker
             value={statuses[student.id] || "present"}
-            onChange={(event) =>
-              setStatuses({ ...statuses, [student.id]: event.target.value })
-            }
-            className="rounded-lg border border-border-subtle bg-white px-2 py-2 capitalize"
-          >
-            {attendanceStatuses.map((status) => (
-              <option key={status} value={status}>
-                {status[0].toUpperCase() + status.slice(1)}
-              </option>
-            ))}
-          </select>
+            onChange={(status) => setStatuses({ ...statuses, [student.id]: status })}
+          />
         </div>
       ))}
       <div className="flex items-center justify-between pt-2">
@@ -804,6 +890,10 @@ function AssessmentTab({ courseId, students, teacherId, classId }) {
       setTitle("");
       setScore("");
       setMessage("Assessment recorded.");
+      // A new score can be the moment the student crosses the course's
+      // certificateMinScore threshold — re-check eligibility from real
+      // data, never a manual student request.
+      checkCertificateEligibility(studentId, courseId);
     } catch (error) {
       setMessage(error.message || "Unable to record assessment.");
     } finally {
@@ -1002,6 +1092,8 @@ function AssignTab({ course }) {
         certificateEnabled: course.certificateEnabled,
         certificateMinAttendance: course.certificateMinAttendance,
         certificateMinScore: course.certificateMinScore,
+        certificateTemplateId: course.certificateTemplateId,
+        certificateCode: course.certificateCode,
         primaryTeacherId,
         assistantTeacherId,
       });

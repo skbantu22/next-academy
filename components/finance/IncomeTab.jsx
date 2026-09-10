@@ -19,7 +19,7 @@ export default function IncomeTab({ payments, loading }) {
         (item) =>
           (methodFilter === "All" || item.paymentMethod === methodFilter) &&
           (!dateFilter || item.paymentDate === dateFilter) &&
-          `${item.studentName} ${item.studentCode}`.toLowerCase().includes(studentSearch.trim().toLowerCase()) &&
+          `${item.studentName} ${item.userId}`.toLowerCase().includes(studentSearch.trim().toLowerCase()) &&
           `${item.courseTitle} ${item.courseCode}`.toLowerCase().includes(trainingSearch.trim().toLowerCase()),
       ),
     [payments, methodFilter, dateFilter, studentSearch, trainingSearch],
@@ -58,7 +58,7 @@ export default function IncomeTab({ payments, loading }) {
               {filtered.map((item) => (
                 <tr key={item.id} className="border-b border-border-subtle">
                   <td className="max-w-32 truncate p-3 font-mono text-xs text-muted" title={item.id}>{item.id}</td>
-                  <td className="p-3"><b className="block">{item.studentName}</b><span className="text-xs text-muted">{item.studentCode}</span></td>
+                  <td className="p-3"><b className="block">{item.studentName}</b><span className="text-xs text-muted">{item.userId}</span></td>
                   <td className="p-3"><b className="block">{item.courseTitle}</b><span className="font-mono text-xs text-muted">{item.courseCode}</span></td>
                   <td className="p-3 text-xs">{formatDate(item.paymentDate)}</td>
                   <td className="p-3 text-xs font-bold text-success">{formatMoney(item.amount)}</td>

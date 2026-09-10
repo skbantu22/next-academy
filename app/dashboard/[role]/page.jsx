@@ -1,12 +1,16 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { doc, onSnapshot } from "firebase/firestore";
+import { subscribeMyAttendance } from "../../../lib/student-data";
+import { attendanceSummary } from "../../../lib/attendance";
 import { useAuth } from "../../../lib/auth-context";
 import { db } from "../../../lib/firebase";
 import StudentManagement from "../../../components/StudentManagement";
 import TeacherAssignment from "../../../components/teacher-assignment/TeacherAssignment";
+import EventManagement from "../../../components/events/EventManagement";
+import StudentEvents from "../../../components/events/StudentEvents";
 import SidebarIcon from "../../../components/dashboard/SidebarIcon";
 import DirectorOverview from "../../../components/dashboard/DirectorOverview";
 import DirectorShell from "../../../components/dashboard/DirectorShell";
@@ -19,6 +23,14 @@ import LoadingScreen from "../../../components/dashboard/LoadingScreen";
 import ChatWorkspace from "../../../components/chat/ChatWorkspace";
 import SettingsPage from "../../../components/settings/SettingsPage";
 import AccountPendingScreen from "../../../components/dashboard/AccountPendingScreen";
+import ContactInquiries from "../../../components/dashboard/ContactInquiries";
+import { useNewInquiryCount } from "../../../lib/contact-inquiries-data";
+import IdCardPrint from "../../../components/teacher/IdCardPrint";
+import Shop from "../../../components/shop/Shop";
+import AchievementManagement from "../../../components/achievement/AchievementManagement";
+import StudentAchievements from "../../../components/achievement/StudentAchievements";
+import StudentAttendance from "../../../components/students/StudentAttendance";
+import AdminQrScanner from "../../../components/attendance/AdminQrScanner";
 
 export const roleConfig = {
   Student: {
@@ -30,6 +42,7 @@ export const roleConfig = {
       "Attendance",
       "Achievements",
       "Certificates",
+      "My Shop",
       "ID Card",
       "Chat",
       "QR Scanner",
@@ -103,8 +116,9 @@ export const roleConfig = {
       "Event",
       "Finance",
       "Documents",
-      "Gift",
+      "My Shop",
       "User",
+      "Contact Inquiries",
       "Chat",
       "Achievement",
       "ID Card",
@@ -122,8 +136,9 @@ export const roleConfig = {
       "Event",
       "Finance",
       "Documents",
-      "Gift",
+      "My Shop",
       "User",
+      "Contact Inquiries",
       "Chat",
       "Achievement",
       "ID Card",
@@ -155,14 +170,23 @@ function EmptyDataPanel({ title, message }) {
 
 function DirectorDashboard({ profile, user }) {
   const { logout } = useAuth();
-  const [active, setActive] = useState("Dashboard");
   const config = roleConfig.Director;
+  // A page navigated to from here (e.g. an event's own detail route) can
+  // link back with ?tab=<Module> so returning here restores that tab
+  // instead of always resetting to the default "Dashboard" tab — the tab
+  // itself is otherwise only client-side state, invisible to the URL.
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const [active, setActive] = useState(
+    requestedTab && config.modules.includes(requestedTab) ? requestedTab : "Dashboard",
+  );
   const name =
     profile.displayName ||
     user.displayName ||
     user.email?.split("@")[0] ||
     "Director";
   const initials = name.slice(0, 2).toUpperCase();
+  const newInquiryCount = useNewInquiryCount();
 
   return (
     <DirectorShell
@@ -175,6 +199,7 @@ function DirectorDashboard({ profile, user }) {
       headerTitle={active === "Dashboard" ? "Director Dashboard" : active}
       headerSubtitle="Organization overview"
       onLogout={logout}
+      badges={{ "Contact Inquiries": newInquiryCount }}
     >
             {active === "Dashboard" ? (
               <DirectorOverview onNavigate={setActive} />
@@ -186,8 +211,28 @@ function DirectorDashboard({ profile, user }) {
               <TrainingManagement role="Director" />
             ) : active === "Teacher" ? (
               <TeacherAssignment />
+            ) : active === "Event" ? (
+              <EventManagement />
             ) : active === "Finance" ? (
               <FinanceManagement />
+            ) : active === "Contact Inquiries" ? (
+              <ContactInquiries />
+            ) : active === "My Shop" ? (
+              <Shop role="Director" uid={user.uid} />
+            ) : active === "Achievement" ? (
+              <AchievementManagement />
+            ) : active === "Scan QR Code" ? (
+              <AdminQrScanner />
+            ) : active === "ID Card" ? (
+              <IdCardPrint
+                mode="self"
+                roleLabel="Director"
+                fallbackName={name}
+                fallbackEmail={user.email}
+                photoURL={profile?.photoURL}
+                active={profile?.active}
+                status={profile?.status}
+              />
             ) : active === "Chat" ? (
               <ChatWorkspace currentUserId={user.uid} currentUserRole="Director" currentUserName={name} />
             ) : active === "Settings" ? (
@@ -205,20 +250,37 @@ function DirectorDashboard({ profile, user }) {
 function DashboardContent({ role, profile, user }) {
   const router = useRouter();
   const { logout } = useAuth();
-  const [active, setActive] = useState("Dashboard");
+  const config = roleConfig[role] || roleConfig.Student;
+  // See DirectorDashboard's identical comment: ?tab=<Module> lets a page
+  // navigated away to (e.g. an event's own detail route) link back to the
+  // specific tab it came from, instead of always resetting to "Dashboard".
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const [active, setActive] = useState(
+    requestedTab && config.modules.includes(requestedTab) ? requestedTab : "Dashboard",
+  );
   const [teacherProfile, setTeacherProfile] = useState(profile);
   const [teacherProfileError, setTeacherProfileError] = useState("");
-  const config = roleConfig[role] || roleConfig.Student;
   const name =
     profile.displayName ||
     user.displayName ||
     user.email?.split("@")[0] ||
     "Member";
   const initials = name.slice(0, 2).toUpperCase();
+  const newInquiryCount = useNewInquiryCount(role === "Admin");
+  // Real attendance, for the Dashboard home's "Attendance" stat card — the
+  // same data source (and same attendanceSummary() math) the full
+  // Attendance page uses, so the two numbers can never disagree.
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
 
   useEffect(() => {
     if (role === "Teacher") router.replace("/teacher/dashboard");
   }, [role, router]);
+
+  useEffect(() => {
+    if (role !== "Student" || !user?.uid) return undefined;
+    return subscribeMyAttendance(user.uid, setAttendanceRecords, () => {});
+  }, [role, user?.uid]);
 
   useEffect(() => {
     if (role !== "Teacher" || !db || !user?.uid) return undefined;
@@ -249,6 +311,26 @@ function DashboardContent({ role, profile, user }) {
     setActive(module);
   }
 
+  // Real "Attendance" card for Student — every other stat in config.stats
+  // stays exactly as-is (out of scope for this change); only Attendance is
+  // replaced, using the same attendanceSummary() math the full Attendance
+  // page uses so the two can never disagree.
+  const attendanceSummaryForCard = role === "Student" ? attendanceSummary(attendanceRecords) : null;
+  const displayStats = attendanceSummaryForCard
+    ? config.stats.map(([label, value, note, icon]) =>
+        label === "Attendance"
+          ? [
+              label,
+              attendanceSummaryForCard.percent != null ? `${attendanceSummaryForCard.percent}%` : "—",
+              attendanceSummaryForCard.total
+                ? `this term - ${attendanceSummaryForCard.present + attendanceSummaryForCard.late} / ${attendanceSummaryForCard.total} sessions`
+                : "no records yet",
+              icon,
+            ]
+          : [label, value, note, icon],
+      )
+    : config.stats;
+
   return (
     <AdminShell
       role={role}
@@ -260,6 +342,7 @@ function DashboardContent({ role, profile, user }) {
       userEmail={user.email}
       headerTitle={active === "Dashboard" ? `${role} Dashboard` : active}
       onLogout={logout}
+      badges={{ "Contact Inquiries": newInquiryCount }}
     >
             {role === "Admin" && active === "Students" ? (
               <StudentManagement role="Admin" />
@@ -267,12 +350,38 @@ function DashboardContent({ role, profile, user }) {
               <UserManagement role="Admin" currentUserId={user.uid} />
             ) : role === "Admin" && active === "Finance" ? (
               <FinanceManagement />
+            ) : role === "Admin" && active === "Contact Inquiries" ? (
+              <ContactInquiries />
             ) : role === "Student" && (active === "Training" || active === "My Training") ? (
               <MyPaymentSummary />
             ) : (active === "Training" || active === "My Training") ? (
               <TrainingManagement role={role} />
             ) : role === "Admin" && active === "Teacher" ? (
               <TeacherAssignment />
+            ) : role === "Admin" && active === "Event" ? (
+              <EventManagement />
+            ) : active === "Events" ? (
+              <StudentEvents />
+            ) : active === "My Shop" ? (
+              <Shop role={role} uid={user.uid} />
+            ) : role === "Admin" && active === "Achievement" ? (
+              <AchievementManagement />
+            ) : role === "Admin" && active === "Scan QR Code" ? (
+              <AdminQrScanner />
+            ) : (active === "Achievements" || active === "Certificates") ? (
+              <StudentAchievements uid={user.uid} />
+            ) : role === "Student" && active === "Attendance" ? (
+              <StudentAttendance />
+            ) : active === "ID Card" ? (
+              <IdCardPrint
+                mode="self"
+                roleLabel={role}
+                fallbackName={name}
+                fallbackEmail={user.email}
+                photoURL={profile?.photoURL}
+                active={profile?.active}
+                status={profile?.status}
+              />
             ) : active === "Chat" ? (
               <ChatWorkspace currentUserId={user.uid} currentUserRole={role} currentUserName={name} />
             ) : active === "Settings" ? (
@@ -282,10 +391,7 @@ function DashboardContent({ role, profile, user }) {
             {active === "Dashboard" && (
             <section className="flex flex-col justify-between gap-6 rounded-3xl border border-[#f3aaaa] bg-[linear-gradient(120deg,#fff0f0_0%,#fff7f7_45%,#ffffff_100%)] p-6 text-ink shadow-xl md:flex-row md:items-center md:p-8">
               <div>
-                <span className="rounded-full bg-active px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
-                  Enterprise workspace Â· {role}
-                </span>
-                <h2 className="mt-3 text-3xl font-extrabold">
+                <h2 className="text-3xl font-extrabold">
                   Welcome, {name}
                 </h2>
                 <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted">
@@ -317,11 +423,12 @@ function DashboardContent({ role, profile, user }) {
             <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {(role === "Teacher"
                 ? teacherUnavailableStats
-                : config.stats
+                : displayStats
               ).map(([label, value, note, icon], index) => (
                 <article
                   key={label}
-                  className="flex items-center justify-between rounded-2xl border border-border-subtle/70 bg-white p-5 shadow-sm"
+                  onClick={role === "Student" && label === "Attendance" ? () => selectModule("Attendance") : undefined}
+                  className={`flex items-center justify-between rounded-2xl border border-border-subtle/70 bg-white p-5 shadow-sm ${role === "Student" && label === "Attendance" ? "cursor-pointer transition hover:border-red-line" : ""}`}
                 >
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-subtle">

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "../../../../lib/firebase-admin";
 import { attendancePercent } from "../../../../lib/attendance";
-import { nextStudentCode } from "../../../../lib/server/student-id";
+import { generateUserId, ensureUserId } from "../../../../lib/server/user-id";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,8 +44,12 @@ export async function GET(request) {
       const totalAssignments = assignmentRows.filter((item) => courseIds.has(item.courseId));
       const completed = new Set(submissionRows.filter((item) => item.studentId === student.id && courseIds.has(item.courseId)).map((item) => item.assignmentId).filter(Boolean));
       const ownAttendance = attendanceRows.filter((item) => item.studentId === student.id);
-      return { ...student, studentId: student.studentId || null, courseNames: [...courseIds].map((id) => courseMap.get(id)?.title || "Course unavailable").join(", ") || null, progress: percent(completed.size, totalAssignments.length), attendance: attendancePercent(ownAttendance), createdAt: isoDate(student.createdAt) };
+      return { ...student, userId: student.userId || null, courseNames: [...courseIds].map((id) => courseMap.get(id)?.title || "Course unavailable").join(", ") || null, progress: percent(completed.size, totalAssignments.length), attendance: attendancePercent(ownAttendance), createdAt: isoDate(student.createdAt) };
     });
+    // Belt-and-suspenders backfill for any Student doc still missing the
+    // unified User ID (legacy accounts pre-dating this field) — same
+    // pattern as lib/server/enrollment-core.js.
+    await Promise.all(rows.filter((row) => !row.userId).map((row) => ensureUserId(db, row.id).then((userId) => { row.userId = userId; })));
     return NextResponse.json({ students: rows });
   } catch (error) { return failure("student-list request", error); }
 }
@@ -62,10 +66,10 @@ export async function POST(request) {
     if (!selectedClass) return NextResponse.json({ message: "This course has no active class available for enrollment." }, { status: 400 });
     createdUser = await access.auth.createUser({ email: normalizedEmail, password, displayName: displayName.trim(), disabled: false });
     try {
-      const studentId = await nextStudentCode(access.db), now = FieldValue.serverTimestamp(), teacherIds = [...new Set([...(course.data().teacherIds || []), ...(selectedClass.teacherIds || [])])], batch = access.db.batch();
-      batch.create(access.db.collection("users").doc(createdUser.uid), { uid: createdUser.uid, studentId, email: createdUser.email || normalizedEmail, displayName: displayName.trim(), phone: phone.trim(), photoURL: "", role: "Student", active: true, status: "active", teacherIds, createdAt: now, updatedAt: now });
+      const userId = await generateUserId(access.db, new Date()), now = FieldValue.serverTimestamp(), teacherIds = [...new Set([...(course.data().teacherIds || []), ...(selectedClass.teacherIds || [])])], batch = access.db.batch();
+      batch.create(access.db.collection("users").doc(createdUser.uid), { uid: createdUser.uid, userId, email: createdUser.email || normalizedEmail, displayName: displayName.trim(), phone: phone.trim(), photoURL: "", role: "Student", active: true, status: "active", teacherIds, createdAt: now, updatedAt: now });
       batch.create(access.db.collection("enrollments").doc(`${courseId}_${createdUser.uid}`), { courseId, classId: selectedClass.id, studentId: createdUser.uid, status: "active", enrolledAt: now, completedAt: null });
-      await batch.commit(); return NextResponse.json({ uid: createdUser.uid, studentId }, { status: 201 });
+      await batch.commit(); return NextResponse.json({ uid: createdUser.uid, userId }, { status: 201 });
     } catch (error) { try { await access.auth.deleteUser(createdUser.uid); } catch (rollbackError) { console.error("[students-api] rollback failed", { code: rollbackError?.code || "unknown" }); } throw error; }
   } catch (error) {
     const known = { "auth/email-already-exists": "An account already exists for this email.", "auth/invalid-email": "Enter a valid email address.", "auth/invalid-password": "Use a password with at least six characters." };
@@ -99,6 +103,11 @@ export async function PATCH(request) {
     });
     if (typeof displayName === "string" || typeof active === "boolean") await access.auth.updateUser(uid, { ...(typeof displayName === "string" ? { displayName: displayName.trim() } : {}), ...(typeof active === "boolean" ? { disabled: !active } : {}) });
     if (approving) {
+      // Approval is the moment a member becomes eligible for the D Card —
+      // ensure their unified User ID exists right now (idempotent: never
+      // touches it if one already exists), instead of only relying on the
+      // next-login self-heal in lib/auth-context.js.
+      await ensureUserId(access.db, uid);
       await access.db.collection("notifications").add({
         userId: uid,
         type: "account.approved",

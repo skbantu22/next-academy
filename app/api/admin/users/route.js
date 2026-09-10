@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "../../../../lib/firebase-admin";
+import { ensureUserId } from "../../../../lib/server/user-id";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,6 +68,7 @@ function userRow(snapshot) {
   return {
     id: snapshot.id,
     uid: data.uid || snapshot.id,
+    userId: data.userId || null,
     displayName: data.displayName || "",
     email: data.email || "",
     phone: data.phone || "",
@@ -81,10 +83,13 @@ export async function GET(request) {
     const access = await requireManager(request);
     if (access.denied) return access.denied;
     const users = await access.db.collection("users").get();
+    const rows = users.docs.map(userRow);
+    // Belt-and-suspenders backfill for any account still missing the
+    // unified User ID (legacy accounts pre-dating this field) — same
+    // pattern as lib/server/enrollment-core.js.
+    await Promise.all(rows.filter((row) => !row.userId).map((row) => ensureUserId(access.db, row.id).then((userId) => { row.userId = userId; })));
     return NextResponse.json({
-      users: users.docs
-        .map(userRow)
-        .sort((a, b) => (a.displayName || a.email || a.uid).localeCompare(b.displayName || b.email || b.uid)),
+      users: rows.sort((a, b) => (a.displayName || a.email || a.uid).localeCompare(b.displayName || b.email || b.uid)),
     });
   } catch (error) {
     return failure("user-list request", error);

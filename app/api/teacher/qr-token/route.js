@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "../../../../lib/firebase-admin";
 import { signQrToken } from "../../../../lib/qr-token";
+import { ensureUserId } from "../../../../lib/server/user-id";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,14 +75,23 @@ export async function POST(request) {
     const kind = mode === "student" ? "student" : targetData.role === "Student" ? "student" : "teacher";
     const qrToken = signQrToken({ sub: targetId, kind, v: qrVersion });
 
+    // The card must show the human-readable unified User ID, never the raw
+    // Firebase Auth UID (`targetId`) — backfill it here if this account
+    // predates the field, same belt-and-suspenders pattern used elsewhere.
+    const userId = targetData.userId || (await ensureUserId(a.db, targetId));
+
     return NextResponse.json({
       token: qrToken,
       qrVersion,
       subject: {
         id: targetId,
+        userId: userId || null,
         displayName: targetData.displayName || "",
         email: targetData.email || "",
         role: mode === "student" ? "Student" : targetData.role || "Member",
+        photoURL: targetData.photoURL || "",
+        active: targetData.active !== false,
+        status: targetData.status || "active",
       },
     });
   } catch (error) {
