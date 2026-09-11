@@ -1,82 +1,54 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
 import { PaymentStatusBadge, Receipt, formatDate, formatMoney } from "../training/PaymentHistoryTable";
-
-const methods = ["All", "Cash", "Bank Transfer", "Card", "Other"];
+import DataTable from "../data-table/DataTable";
 
 export default function IncomeTab({ payments, loading }) {
-  const [studentSearch, setStudentSearch] = useState("");
-  const [trainingSearch, setTrainingSearch] = useState("");
-  const [methodFilter, setMethodFilter] = useState("All");
-  const [dateFilter, setDateFilter] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [receiptFor, setReceiptFor] = useState(null);
 
-  const filtered = useMemo(
-    () =>
-      payments.filter(
-        (item) =>
-          (methodFilter === "All" || item.paymentMethod === methodFilter) &&
-          (!dateFilter || item.paymentDate === dateFilter) &&
-          `${item.studentName} ${item.userId}`.toLowerCase().includes(studentSearch.trim().toLowerCase()) &&
-          `${item.courseTitle} ${item.courseCode}`.toLowerCase().includes(trainingSearch.trim().toLowerCase()),
-      ),
-    [payments, methodFilter, dateFilter, studentSearch, trainingSearch],
+  const dated = useMemo(
+    () => payments.filter((item) => (!from || (item.paymentDate || "") >= from) && (!to || (item.paymentDate || "") <= to)),
+    [payments, from, to],
   );
+
+  const columns = useMemo(() => [
+    { key: "id", header: "Payment ID", accessor: (p) => p.id, render: (p) => <span className="font-mono text-[11px] text-muted">{p.id.slice(0, 10)}…</span> },
+    { key: "studentName", header: "Student", sortable: true, accessor: (p) => `${p.studentName || ""} ${p.userId || ""}`, render: (p) => <span><b className="block text-ink">{p.studentName}</b><span className="text-[11px] text-muted">{p.userId}</span></span>, exportValue: (p) => p.studentName || "" },
+    { key: "courseTitle", header: "Course", sortable: true, filter: {}, accessor: (p) => p.courseTitle || "", render: (p) => <span><b className="block text-ink">{p.courseTitle}</b><span className="font-mono text-[11px] text-muted">{p.courseCode}</span></span> },
+    { key: "paymentDate", header: "Date", sortable: true, accessor: (p) => p.paymentDate || "", render: (p) => <span className="text-xs">{formatDate(p.paymentDate)}</span> },
+    { key: "amount", header: "Amount", align: "right", sortable: true, accessor: (p) => Number(p.amount || 0), render: (p) => <b className="text-success">{formatMoney(p.amount)}</b>, exportValue: (p) => Number(p.amount || 0) },
+    { key: "paymentMethod", header: "Method", sortable: true, filter: {}, accessor: (p) => p.paymentMethod || "" },
+    { key: "reference", header: "Reference", accessor: (p) => p.reference || "" },
+    { key: "recordedByName", header: "Recorded By", sortable: true, accessor: (p) => p.recordedByName || "" },
+    { key: "status", header: "Status", sortable: true, filter: {}, accessor: (p) => p.status || "Paid", render: (p) => <PaymentStatusBadge value={p.status || "Paid"} /> },
+  ], []);
 
   return (
     <section className="rounded-3xl border border-border-subtle bg-white p-5 shadow-sm md:p-6">
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <label className="relative min-w-48 flex-1">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-subtle" />
-          <input value={studentSearch} onChange={(event) => setStudentSearch(event.target.value)} placeholder="Search student" className="w-full rounded-xl border border-border-subtle bg-page py-2 pl-9 pr-3 text-sm" />
-        </label>
-        <label className="relative min-w-48 flex-1">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-subtle" />
-          <input value={trainingSearch} onChange={(event) => setTrainingSearch(event.target.value)} placeholder="Search training" className="w-full rounded-xl border border-border-subtle bg-page py-2 pl-9 pr-3 text-sm" />
-        </label>
-        <select value={methodFilter} onChange={(event) => setMethodFilter(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 text-sm">
-          {methods.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-        <input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 text-sm" />
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-bold text-muted">
+        <span>Date range</span>
+        <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 font-normal" />
+        <span>–</span>
+        <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 font-normal" />
+        {(from || to) && <button type="button" onClick={() => { setFrom(""); setTo(""); }} className="text-primary">clear</button>}
       </div>
 
-      {loading ? (
-        <p className="py-10 text-center text-sm text-muted">Loading payments...</p>
-      ) : filtered.length ? (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="border-b text-[10px] uppercase tracking-wider text-subtle">
-              <tr>
-                {["Payment ID", "Student", "Training", "Payment Date", "Amount", "Method", "Reference", "Recorded By", "Status", "Receipt"].map((label) => (
-                  <th key={label} className="p-3">{label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((item) => (
-                <tr key={item.id} className="border-b border-border-subtle">
-                  <td className="max-w-32 truncate p-3 font-mono text-xs text-muted" title={item.id}>{item.id}</td>
-                  <td className="p-3"><b className="block">{item.studentName}</b><span className="text-xs text-muted">{item.userId}</span></td>
-                  <td className="p-3"><b className="block">{item.courseTitle}</b><span className="font-mono text-xs text-muted">{item.courseCode}</span></td>
-                  <td className="p-3 text-xs">{formatDate(item.paymentDate)}</td>
-                  <td className="p-3 text-xs font-bold text-success">{formatMoney(item.amount)}</td>
-                  <td className="p-3 text-xs text-muted">{item.paymentMethod}</td>
-                  <td className="p-3 text-xs text-muted">{item.reference || "—"}</td>
-                  <td className="p-3 text-xs text-muted">{item.recordedByName}</td>
-                  <td className="p-3"><PaymentStatusBadge value={item.status || "Paid"} /></td>
-                  <td className="p-3 text-xs font-bold">
-                    <button type="button" onClick={() => setReceiptFor(item)} className="text-primary">View</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="py-10 text-center text-sm text-muted">No payments match your filters.</p>
-      )}
+      <DataTable
+        title="payments"
+        name="payments"
+        columns={columns}
+        rows={dated}
+        loading={loading}
+        initialSort={{ key: "paymentDate", dir: "desc" }}
+        pageSize={10}
+        emptyLabel="No payments recorded yet."
+        rowActions={(item) => (
+          <button type="button" onClick={() => setReceiptFor(item)} className="rounded-lg bg-info px-2.5 py-1.5 text-[11px] font-bold text-white hover:opacity-90">Receipt</button>
+        )}
+      />
 
       {receiptFor && (
         <Receipt

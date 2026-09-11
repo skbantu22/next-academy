@@ -5,6 +5,7 @@ import { loadFinanceOverview } from "../../lib/services/finance-service";
 import AdmissionsManagement from "./AdmissionsManagement";
 import FinanceDashboardTab from "./FinanceDashboardTab";
 import IncomeTab from "./IncomeTab";
+import IncomeManagementTab from "./IncomeManagementTab";
 import ExpensesTab from "./ExpensesTab";
 import TransactionsTab from "./TransactionsTab";
 import ProfitLossTab from "./ProfitLossTab";
@@ -14,7 +15,7 @@ import ReportsTab from "./ReportsTab";
 // this dashboard (Training, Users, etc. are also single sidebar items with
 // their own internal tabs, e.g. Training Details' Overview/Classes/...).
 // No second dashboard shell, no new sidebar items.
-const tabs = ["Dashboard", "Income / Payments", "Outstanding Due", "Expenses", "Transactions", "Profit & Loss", "Reports"];
+const tabs = ["Dashboard", "Income", "Income / Payments", "Outstanding Due", "Expenses", "Transactions", "Profit & Loss", "Reports"];
 
 export default function FinanceManagement() {
   const [tab, setTab] = useState("Dashboard");
@@ -63,10 +64,11 @@ export default function FinanceManagement() {
       {error && <p className="rounded-xl bg-active p-4 text-sm text-primary">{error}</p>}
 
       {tab === "Dashboard" && <FinanceDashboardTab overview={overview} loading={loading} />}
+      {tab === "Income" && <IncomeManagementTab income={overview?.income || []} loading={loading} onChanged={load} />}
       {tab === "Income / Payments" && <IncomeTab payments={overview?.payments || []} loading={loading} />}
       {tab === "Outstanding Due" && <AdmissionsManagement />}
       {tab === "Expenses" && <ExpensesTab expenses={overview?.expenses || []} loading={loading} onChanged={load} />}
-      {tab === "Transactions" && <TransactionsTab payments={overview?.payments || []} expenses={overview?.expenses || []} loading={loading} />}
+      {tab === "Transactions" && <TransactionsTab payments={overview?.payments || []} expenses={overview?.expenses || []} income={overview?.income || []} loading={loading} />}
       {tab === "Profit & Loss" && <ProfitLossTab />}
       {tab === "Reports" && <ReportsTab />}
     </div>

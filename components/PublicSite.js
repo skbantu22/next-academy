@@ -662,7 +662,7 @@ export default function PublicSite() {
             </div>
 
             <div className="absolute -bottom-6 -left-4 max-w-[220px] rounded-2xl bg-[#7F1D1D] p-5 text-white shadow-xl shadow-black/10 sm:-left-6">
-              <p className="text-3xl font-black">5,300+</p>
+              <p className="text-3xl font-black">400+</p>
 
               <p className="mt-1 text-xs leading-5 text-white/85">
                 students trained and growing every term

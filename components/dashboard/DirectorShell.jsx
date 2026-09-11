@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import SidebarIcon from "./SidebarIcon";
+import SidebarIcon, { navLabel } from "./SidebarIcon";
 import ChatButton from "./ChatButton";
 import NotificationBell from "./NotificationBell";
 
@@ -75,7 +75,7 @@ export default function DirectorShell({
                 <span className={`grid h-6 w-6 shrink-0 place-items-center ${isActive ? "text-primary" : ""}`}>
                   <SidebarIcon name={module} className="h-6 w-6" />
                 </span>
-                {module}
+                {navLabel(module)}
                 {badges[module] > 0 && (
                   <b className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] text-white">
                     {badges[module] > 9 ? "9+" : badges[module]}

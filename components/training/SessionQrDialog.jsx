@@ -13,7 +13,7 @@ import { manageSessionQr } from "../../lib/class-sessions-data";
 export default function SessionQrDialog({ session, onClose }) {
   const [qrImage, setQrImage] = useState("");
   const [expiresAt, setExpiresAt] = useState(0);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState("");
   const [stopped, setStopped] = useState(false);
   const startedRef = useRef(false);

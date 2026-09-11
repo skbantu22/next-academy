@@ -1,5 +1,5 @@
 ﻿import {
-  Award, BookOpen, CalendarDays, Contact, Files, GraduationCap,
+  Award, BookOpen, CalendarDays, Contact, DoorOpen, Files, GraduationCap,
   LayoutDashboard, Mail, Megaphone, MessageCircle, Presentation, QrCode, ScanQrCode,
   Settings, ShoppingBag, Sparkles, Trophy, UserRound, UsersRound, WalletCards,
 } from "lucide-react";
@@ -7,7 +7,7 @@
 const icons = {
   Dashboard: LayoutDashboard, Students: UsersRound, Teacher: Presentation,
   Teachers: Presentation, Training: BookOpen, "My Training": BookOpen,
-  Event: CalendarDays, Events: CalendarDays, Finance: WalletCards,
+  Event: CalendarDays, Events: CalendarDays, "Room Booking": DoorOpen, Finance: WalletCards,
   Documents: Files, "My Shop": ShoppingBag, User: UserRound, Users: UserRound,
   Chat: MessageCircle, Achievement: Trophy, Achievements: Trophy,
   "ID Card": Contact, "ID Cards": Contact, "Scan QR Code": ScanQrCode,
@@ -19,4 +19,15 @@ const icons = {
 export default function SidebarIcon({ name, className = "h-5 w-5" }) {
   const Icon = icons[name] || GraduationCap;
   return <Icon className={className} strokeWidth={1.9} aria-hidden="true" />;
+}
+
+// Sidebar display overrides — the module key stays the same everywhere
+// (routing, icons, badges); only the label shown in the nav changes.
+const NAV_LABELS = {
+  "My Shop": "Shop",
+  "Contact Inquiries": "Contact",
+};
+
+export function navLabel(name) {
+  return NAV_LABELS[name] || name;
 }

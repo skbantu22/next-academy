@@ -9,6 +9,9 @@ import {
   subscribeCourseClassSessions,
   updateClassSession,
 } from "../../lib/class-sessions-data";
+import SessionQrDialog from "./SessionQrDialog";
+import { useToast } from "../ui/Toast";
+import { useConfirm } from "../ui/ConfirmDialog";
 
 // A "class session" is one specific dated/timed physical meeting of an
 // existing `classes/{id}` batch — see firestore.rules'/class-sessions API's
@@ -60,6 +63,9 @@ export default function ClassSessionsPanel({ course, classes, canManage, isAssig
   const [form, setForm] = useState(blank);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [qrSession, setQrSession] = useState(null);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   useEffect(() => subscribeCourseClassSessions(course.id, setSessions, () => {}), [course.id]);
 
@@ -115,21 +121,30 @@ export default function ClassSessionsPanel({ course, classes, canManage, isAssig
     }
   }
 
-  async function cancelSession(session) {
-    if (!window.confirm(`Cancel "${session.title}" on ${formatDate(session.date)}?`)) return;
-    try {
-      await updateClassSession({ id: session.id, status: "cancelled" });
-    } catch (err) {
-      window.alert(err.message || "Unable to cancel this class.");
-    }
+  function cancelSession(session) {
+    return confirm({
+      title: "Cancel class session",
+      message: `Cancel "${session.title}" on ${formatDate(session.date)}?`,
+      tone: "danger",
+      confirmLabel: "Cancel session",
+      cancelLabel: "Keep it",
+      onConfirm: async () => {
+        await updateClassSession({ id: session.id, status: "cancelled" });
+        toast.success("Class session cancelled");
+      },
+    });
   }
-  async function removeSession(session) {
-    if (!window.confirm(`Permanently delete "${session.title}"? This cannot be undone.`)) return;
-    try {
-      await deleteClassSession(session.id);
-    } catch (err) {
-      window.alert(err.message || "Unable to delete this class.");
-    }
+  function removeSession(session) {
+    return confirm({
+      title: "Delete class session",
+      message: `Permanently delete "${session.title}"? This cannot be undone.`,
+      tone: "danger",
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        await deleteClassSession(session.id);
+        toast.success("Class session deleted");
+      },
+    });
   }
 
   return (
@@ -191,6 +206,14 @@ export default function ClassSessionsPanel({ course, classes, canManage, isAssig
                           {allowed && (
                             <td className="p-2.5">
                               <div className="flex flex-wrap gap-2 font-bold">
+                                {/* Only offered on the session's own real
+                                    date — the server rejects starting a QR
+                                    on any other day anyway (no manual
+                                    per-student marking; students self-check-
+                                    in by scanning this). */}
+                                {session.status === "scheduled" && session.date === todayLocalDate() && (
+                                  <button onClick={() => setQrSession(session)} className="rounded-lg bg-primary px-2.5 py-1 text-white hover:bg-primary-hover">Show QR</button>
+                                )}
                                 <button onClick={() => openEdit(session)} className="rounded-lg border border-border-subtle px-2.5 py-1 text-ink hover:bg-active">Edit</button>
                                 {session.status !== "cancelled" && (
                                   <button onClick={() => cancelSession(session)} className="rounded-lg border border-border-subtle px-2.5 py-1 text-primary hover:bg-active">Cancel</button>
@@ -293,6 +316,8 @@ export default function ClassSessionsPanel({ course, classes, canManage, isAssig
           </div>
         </div>
       )}
+
+      {qrSession && <SessionQrDialog session={qrSession} onClose={() => setQrSession(null)} />}
     </div>
   );
 }

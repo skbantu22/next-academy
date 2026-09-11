@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import SidebarIcon from "./SidebarIcon";
+import SidebarIcon, { navLabel } from "./SidebarIcon";
 import ChatButton from "./ChatButton";
 import NotificationBell from "./NotificationBell";
 
@@ -74,7 +74,7 @@ export default function WorkspaceShell({
                 <span className={`grid h-6 w-6 shrink-0 place-items-center ${active === module ? "text-primary" : ""}`}>
                   <SidebarIcon name={module} className="h-6 w-6" />
                 </span>
-                {module}
+                {navLabel(module)}
                 {renderBadge?.(module)}
               </>
             );

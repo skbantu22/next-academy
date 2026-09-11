@@ -13,10 +13,13 @@ export default function FinanceDashboardTab({ overview, loading }) {
   if (loading || !overview) {
     return <p className="py-10 text-center text-sm text-muted">Loading finance overview...</p>;
   }
-  const { totals, payments, expenses } = overview;
+  const { totals, payments, expenses, income = [] } = overview;
 
   const recentTransactions = [
     ...payments.map((item) => ({ kind: "Income", date: item.paymentDate, label: `${item.studentName} · ${item.courseTitle}`, amount: item.amount })),
+    ...income
+      .filter((item) => (item.status || "Paid") !== "Pending")
+      .map((item) => ({ kind: "Income", date: item.date, label: `${item.source}${item.personName ? ` · ${item.personName}` : ""}`, amount: item.amount })),
     ...expenses.map((item) => ({ kind: "Expense", date: item.expenseDate, label: `${item.category} · ${item.description || "—"}`, amount: -item.amount })),
   ]
     .sort((left, right) => (right.date || "").localeCompare(left.date || ""))

@@ -74,23 +74,28 @@ export async function POST(request) {
     if (customerPhone && !phonePattern.test(customerPhone)) return NextResponse.json({ message: "Enter a valid mobile number." }, { status: 400 });
     if (customerEmail && !emailPattern.test(customerEmail)) return NextResponse.json({ message: "Enter a valid email address." }, { status: 400 });
     const notes = typeof body.notes === "string" ? body.notes.trim().slice(0, 1000) : "";
-    const collectionSessionId = typeof body.collectionSessionId === "string" ? body.collectionSessionId : "";
+    // A plain customer-entered collection date — not tied to a specific
+    // Class Session record. Validated as a real, well-formed calendar date
+    // string (never a fabricated default) and never a date in the past.
+    const collectionDate = typeof body.collectionDate === "string" ? body.collectionDate.trim() : "";
+    if (collectionDate) {
+      const parsed = new Date(`${collectionDate}T00:00:00`);
+      const today = new Date().toISOString().slice(0, 10);
+      if (Number.isNaN(parsed.getTime()) || collectionDate < today) {
+        return NextResponse.json({ message: "Choose a valid collection date." }, { status: 400 });
+      }
+    }
 
     const orderRef = a.db.collection("orders").doc();
     const result = await a.db.runTransaction(async (transaction) => {
       // All reads for this transaction, gathered up front — Firestore
       // requires every read to happen before any write.
       const productRefs = cleanItems.map((item) => a.db.collection("products").doc(item.productId));
-      const [productSnapshots, collectionSnapshot, counterSnapshot] = await Promise.all([
+      const [productSnapshots, counterSnapshot] = await Promise.all([
         Promise.all(productRefs.map((ref) => transaction.get(ref))),
-        collectionSessionId ? transaction.get(a.db.collection("classSessions").doc(collectionSessionId)) : null,
         transaction.get(orderCounterRef(a.db)),
       ]);
       const { next: nextCounterValue, orderNumber } = formatOrderNumber(counterSnapshot);
-
-      if (collectionSessionId && (!collectionSnapshot.exists || collectionSnapshot.data().status === "cancelled")) {
-        return { status: 400, body: { message: "This collection session is no longer available." } };
-      }
 
       const orderItems = [];
       let totalAmount = 0;
@@ -138,21 +143,7 @@ export async function POST(request) {
         customerPhone: customerPhone || a.profile.phone || "",
         customerEmail: customerEmail || a.profile.email || "",
         notes,
-        // Denormalized snapshot of the real session chosen at purchase
-        // time — the session itself can later be edited/cancelled without
-        // silently rewriting what this order actually promised the buyer.
-        ...(collectionSnapshot?.exists
-          ? {
-              collection: {
-                sessionId: collectionSessionId,
-                title: collectionSnapshot.data().title || "",
-                date: collectionSnapshot.data().date || "",
-                startTime: collectionSnapshot.data().startTime || "",
-                endTime: collectionSnapshot.data().endTime || "",
-                location: collectionSnapshot.data().location || "",
-              },
-            }
-          : {}),
+        collectionDate,
         items: orderItems,
         totalAmount,
         status: "pending",

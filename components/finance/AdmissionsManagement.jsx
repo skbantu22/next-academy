@@ -2,12 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BadgeCheck, CircleAlert, CircleDollarSign, Receipt, Search, Users, Wallet } from "lucide-react";
+import { BadgeCheck, CircleAlert, CircleDollarSign, Receipt, Users, Wallet } from "lucide-react";
 import { loadAdmissions } from "../../lib/services/payment-service";
 import { PaymentStatusBadge, formatDate, formatMoney } from "../training/PaymentHistoryTable";
 import StatCard from "./StatCard";
-
-const filters = ["All", "Paid", "Partial", "Unpaid"];
+import DataTable from "../data-table/DataTable";
 
 // Cross-training admissions/finance view for Director/Admin. Read-only here
 // by design — "View"/"Collect Payment" deep-link into the training's own
@@ -18,9 +17,6 @@ export default function AdmissionsManagement() {
   const [admissions, setAdmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [studentSearch, setStudentSearch] = useState("");
-  const [trainingSearch, setTrainingSearch] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -39,16 +35,17 @@ export default function AdmissionsManagement() {
     };
   }, []);
 
-  const filtered = useMemo(
-    () =>
-      admissions.filter(
-        (item) =>
-          (statusFilter === "All" || item.paymentStatus === statusFilter) &&
-          `${item.studentName} ${item.userId}`.toLowerCase().includes(studentSearch.trim().toLowerCase()) &&
-          `${item.courseTitle} ${item.courseCode}`.toLowerCase().includes(trainingSearch.trim().toLowerCase()),
-      ),
-    [admissions, statusFilter, studentSearch, trainingSearch],
-  );
+  const columns = useMemo(() => [
+    { key: "studentName", header: "Student", sortable: true, accessor: (a) => `${a.studentName || ""} ${a.userId || ""}`, render: (a) => <span><b className="block text-ink">{a.studentName}</b><span className="text-[11px] text-muted">{a.userId}</span></span>, exportValue: (a) => a.studentName || "" },
+    { key: "courseTitle", header: "Training", sortable: true, filter: {}, accessor: (a) => a.courseTitle || "", render: (a) => <span><b className="block text-ink">{a.courseTitle}</b><span className="font-mono text-[11px] text-muted">{a.courseCode}</span></span> },
+    { key: "trainingFee", header: "Total Fee", align: "right", sortable: true, accessor: (a) => Number(a.trainingFee || 0), render: (a) => <span className="text-xs text-muted">{formatMoney(a.trainingFee)}</span>, exportValue: (a) => Number(a.trainingFee || 0) },
+    { key: "discount", header: "Discount", align: "right", accessor: (a) => Number(a.discount || 0), render: (a) => <span className="text-xs text-muted">{formatMoney(a.discount)}</span>, exportValue: (a) => Number(a.discount || 0) },
+    { key: "finalFee", header: "Final Fee", align: "right", sortable: true, accessor: (a) => Number(a.finalFee || 0), render: (a) => <b className="text-ink">{formatMoney(a.finalFee)}</b>, exportValue: (a) => Number(a.finalFee || 0) },
+    { key: "totalPaid", header: "Total Paid", align: "right", sortable: true, accessor: (a) => Number(a.totalPaid || 0), render: (a) => <b className="text-success">{formatMoney(a.totalPaid)}</b>, exportValue: (a) => Number(a.totalPaid || 0) },
+    { key: "dueAmount", header: "Outstanding Due", align: "right", sortable: true, accessor: (a) => Number(a.dueAmount || 0), render: (a) => <b className="text-primary">{formatMoney(a.dueAmount)}</b>, exportValue: (a) => Number(a.dueAmount || 0) },
+    { key: "paymentStatus", header: "Payment Status", sortable: true, filter: {}, accessor: (a) => a.paymentStatus || "", render: (a) => <PaymentStatusBadge value={a.paymentStatus} /> },
+    { key: "admissionDate", header: "Admission Date", sortable: true, accessor: (a) => a.admissionDate || "", exportValue: (a) => a.admissionDate || "", render: (a) => <span className="text-xs text-muted">{formatDate(a.admissionDate)}</span> },
+  ], []);
 
   const summary = useMemo(
     () => ({
@@ -82,86 +79,21 @@ export default function AdmissionsManagement() {
       </section>
 
       <section className="rounded-3xl border border-border-subtle bg-white p-5 shadow-sm md:p-6">
-        <div className="mb-5 flex flex-wrap items-center gap-3">
-          <div className="flex flex-wrap gap-2">
-            {filters.map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setStatusFilter(item)}
-                className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${statusFilter === item ? "bg-primary text-white" : "bg-page text-muted hover:bg-active hover:text-primary"}`}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-          <label className="relative min-w-48 flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-subtle" />
-            <input
-              value={studentSearch}
-              onChange={(event) => setStudentSearch(event.target.value)}
-              placeholder="Search student"
-              className="w-full rounded-xl border border-border-subtle bg-page py-2 pl-9 pr-3 text-sm"
-            />
-          </label>
-          <label className="relative min-w-48 flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-subtle" />
-            <input
-              value={trainingSearch}
-              onChange={(event) => setTrainingSearch(event.target.value)}
-              placeholder="Search training"
-              className="w-full rounded-xl border border-border-subtle bg-page py-2 pl-9 pr-3 text-sm"
-            />
-          </label>
-        </div>
-
         {error && <p className="mb-3 rounded-xl bg-active p-3 text-xs text-primary">{error}</p>}
-
-        {loading ? (
-          <p className="py-10 text-center text-sm text-muted">Loading admissions...</p>
-        ) : filtered.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="border-b text-[10px] uppercase tracking-wider text-subtle">
-                <tr>
-                  {["Student", "Training", "Total Fee", "Discount", "Final Fee", "Total Paid", "Outstanding Due", "Payment Status", "Admission Date", "Actions"].map((label) => (
-                    <th key={label} className="p-3">{label}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((item) => (
-                  <tr key={item.enrollmentId} className="border-b border-border-subtle">
-                    <td className="p-3">
-                      <b className="block">{item.studentName}</b>
-                      <span className="text-xs text-muted">{item.userId}</span>
-                    </td>
-                    <td className="p-3">
-                      <b className="block">{item.courseTitle}</b>
-                      <span className="font-mono text-xs text-muted">{item.courseCode}</span>
-                    </td>
-                    <td className="p-3 text-xs text-muted">{formatMoney(item.trainingFee)}</td>
-                    <td className="p-3 text-xs text-muted">{formatMoney(item.discount)}</td>
-                    <td className="p-3 text-xs font-bold text-ink">{formatMoney(item.finalFee)}</td>
-                    <td className="p-3 text-xs font-bold text-success">{formatMoney(item.totalPaid)}</td>
-                    <td className="p-3 text-xs font-bold text-primary">{formatMoney(item.dueAmount)}</td>
-                    <td className="p-3"><PaymentStatusBadge value={item.paymentStatus} /></td>
-                    <td className="p-3 text-xs text-muted">{formatDate(item.admissionDate)}</td>
-                    <td className="p-3 text-xs font-bold">
-                      <Link href={`/dashboard/training/${item.courseId}`} className="text-primary">
-                        View
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="py-10 text-center text-sm text-muted">
-            {statusFilter !== "All" || studentSearch || trainingSearch ? "No admissions match your filters." : "No admissions recorded yet."}
-          </p>
-        )}
+        <DataTable
+          title="admissions"
+          name="admissions-outstanding-due"
+          columns={columns}
+          rows={admissions}
+          loading={loading}
+          getRowId={(a) => a.enrollmentId}
+          initialSort={{ key: "admissionDate", dir: "desc" }}
+          pageSize={10}
+          emptyLabel="No admissions recorded yet."
+          rowActions={(item) => (
+            <Link href={`/dashboard/training/${item.courseId}`} className="rounded-lg bg-info px-2.5 py-1.5 text-[11px] font-bold text-white hover:opacity-90">View</Link>
+          )}
+        />
       </section>
     </div>
   );

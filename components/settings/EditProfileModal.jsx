@@ -1,10 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { X } from "lucide-react";
-import { updateMyProfile } from "../../lib/profile-data";
+import { useEffect, useState } from "react";
+import { Camera, X } from "lucide-react";
+import { updateMyProfile, uploadProfilePhoto, validateAvatarFile } from "../../lib/profile-data";
 
 const genders = ["Prefer not to say", "Male", "Female", "Other"];
+
+function initialsFrom(name) {
+  return (name || "?").trim().slice(0, 2).toUpperCase();
+}
 
 function Field({ label, ...props }) {
   return (
@@ -22,7 +26,6 @@ export default function EditProfileModal({ uid, profile, onClose, onSaved }) {
   const [form, setForm] = useState({
     displayName: profile?.displayName || "",
     phone: profile?.phone || "",
-    photoURL: profile?.photoURL || "",
     dateOfBirth: profile?.dateOfBirth || "",
     gender: profile?.gender || "",
     address: profile?.address || "",
@@ -38,11 +41,51 @@ export default function EditProfileModal({ uid, profile, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Profile photo: a real file upload, not a URL. `photoFile` is a
+  // newly-picked File (uploaded on Save); `photoRemoved` means the user
+  // cleared the existing photo. Neither touches the existing photoURL until
+  // Save succeeds.
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState("");
+  const [photoRemoved, setPhotoRemoved] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  useEffect(() => {
+    if (!photoPreview) return undefined;
+    return () => URL.revokeObjectURL(photoPreview);
+  }, [photoPreview]);
+
+  const currentPhoto = photoPreview || (photoRemoved ? "" : profile?.photoURL || "");
+
+  function handlePhotoSelect(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const invalid = validateAvatarFile(file);
+    if (invalid) {
+      setPhotoError(invalid);
+      return;
+    }
+    setPhotoError("");
+    setPhotoRemoved(false);
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }
+
+  function handlePhotoRemove() {
+    setPhotoFile(null);
+    setPhotoPreview("");
+    setPhotoRemoved(true);
+    setPhotoError("");
+  }
+
   function set(field) {
     return (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
   }
 
   async function handleSave() {
+    if (saving) return;
     if (!form.displayName.trim()) {
       setError("Full name cannot be empty.");
       return;
@@ -50,10 +93,24 @@ export default function EditProfileModal({ uid, profile, onClose, onSaved }) {
     setSaving(true);
     setError("");
     try {
+      let photoURL = profile?.photoURL || "";
+      let photoPath = profile?.photoPath || "";
+      if (photoFile) {
+        setUploadingPhoto(true);
+        try {
+          ({ photoURL, photoPath } = await uploadProfilePhoto(uid, photoFile));
+        } finally {
+          setUploadingPhoto(false);
+        }
+      } else if (photoRemoved) {
+        photoURL = "";
+        photoPath = "";
+      }
       await updateMyProfile(uid, {
         displayName: form.displayName.trim(),
         phone: form.phone.trim(),
-        photoURL: form.photoURL.trim(),
+        photoURL,
+        photoPath,
         dateOfBirth: form.dateOfBirth,
         gender: form.gender,
         address: form.address.trim(),
@@ -94,7 +151,41 @@ export default function EditProfileModal({ uid, profile, onClose, onSaved }) {
             <Field label="Full name" value={form.displayName} onChange={set("displayName")} />
             <Field label="Phone number" value={form.phone} onChange={set("phone")} />
           </div>
-          <Field label="Profile photo URL (optional)" value={form.photoURL} onChange={set("photoURL")} placeholder="https://..." />
+
+          <div className="grid gap-2 text-xs font-semibold text-muted">
+            Profile photo
+            <div className="flex flex-wrap items-center gap-4">
+              {currentPhoto ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={currentPhoto} alt="Profile" className="h-20 w-20 shrink-0 rounded-full border border-border-subtle object-cover" />
+              ) : (
+                <span className="grid h-20 w-20 shrink-0 place-items-center rounded-full border border-border-subtle bg-page text-xl font-bold text-subtle">
+                  {initialsFrom(form.displayName)}
+                </span>
+              )}
+              <div className="flex flex-col gap-2">
+                <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-border-subtle bg-page px-4 py-2 text-xs font-bold text-ink hover:bg-active">
+                  <Camera className="h-3.5 w-3.5" aria-hidden="true" />
+                  {currentPhoto ? "Change photo" : "Upload photo"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handlePhotoSelect}
+                    disabled={saving}
+                    className="hidden"
+                  />
+                </label>
+                {currentPhoto && (
+                  <button type="button" onClick={handlePhotoRemove} disabled={saving} className="w-fit text-[11px] font-bold text-primary hover:underline disabled:opacity-50">
+                    Remove photo
+                  </button>
+                )}
+                {photoFile && <span className="max-w-[240px] truncate text-[10px] text-subtle">{photoFile.name}</span>}
+                <span className="text-[10px] font-normal text-subtle">JPG, PNG or WEBP · up to 5 MB</span>
+                {photoError && <span className="text-[10px] font-semibold text-primary">{photoError}</span>}
+              </div>
+            </div>
+          </div>
 
           <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-subtle">Personal details</p>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -157,7 +248,7 @@ export default function EditProfileModal({ uid, profile, onClose, onSaved }) {
             disabled={saving}
             className="rounded-xl bg-primary px-5 py-2.5 text-xs font-bold text-white hover:bg-primary-hover disabled:opacity-60"
           >
-            {saving ? "Saving..." : "Save changes"}
+            {uploadingPhoto ? "Uploading photo..." : saving ? "Saving..." : "Save changes"}
           </button>
         </div>
       </div>

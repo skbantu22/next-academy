@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import SidebarIcon from "./SidebarIcon";
+import SidebarIcon, { navLabel } from "./SidebarIcon";
 import ChatButton, { useUnreadConversationCount } from "./ChatButton";
 import NotificationBell from "./NotificationBell";
 
@@ -78,7 +78,7 @@ export default function AdminShell({
                 <span className={`grid h-6 w-6 shrink-0 place-items-center ${isActive ? "text-primary" : ""}`}>
                   <SidebarIcon name={module} className="h-6 w-6" />
                 </span>
-                {module}
+                {navLabel(module)}
                 {module === "Chat" && unreadChat > 0 && (
                   <b className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] text-white">
                     {unreadChat > 9 ? "9+" : unreadChat}

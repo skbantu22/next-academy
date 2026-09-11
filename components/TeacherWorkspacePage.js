@@ -27,12 +27,9 @@ import ChatWorkspace from "./chat/ChatWorkspace";
 import { NotificationList } from "./dashboard/NotificationBell";
 import SettingsPage from "./settings/SettingsPage";
 import { markNotificationRead } from "../lib/notification-data";
+import { uploadProfilePhoto, validateAvatarFile } from "../lib/profile-data";
 import { scanAttendanceQr } from "../lib/services/qr-service";
-import {
-  deleteTeacherDocument,
-  subscribeTeacherDocuments,
-  uploadTeacherDocument,
-} from "../lib/teacher-documents";
+import DocumentsModule from "./documents/DocumentsModule";
 import {
   createPromotionLink,
   subscribeTeacherLeads,
@@ -735,15 +732,51 @@ function ScopedRecordsView({ title, records, empty }) {
 }
 
 function ProfileView({ user, profile }) {
+  const { refreshProfile } = useAuth();
   const [displayName, setDisplayName] = useState(profile?.displayName || "");
-  const [photoURL, setPhotoURL] = useState(profile?.photoURL || "");
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState("");
+  const [photoRemoved, setPhotoRemoved] = useState(false);
+  const [photoError, setPhotoError] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!photoPreview) return undefined;
+    return () => URL.revokeObjectURL(photoPreview);
+  }, [photoPreview]);
+
+  const currentPhoto = photoPreview || (photoRemoved ? "" : profile?.photoURL || "");
+
+  function pickPhoto(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const invalid = validateAvatarFile(file);
+    if (invalid) {
+      setPhotoError(invalid);
+      return;
+    }
+    setPhotoError("");
+    setPhotoRemoved(false);
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }
+
   async function save() {
+    if (saving) return;
     setSaving(true);
     setMessage("");
     try {
-      await updateTeacherProfile(user.uid, { displayName, photoURL });
+      let photoURL = profile?.photoURL || "";
+      let photoPath = profile?.photoPath || "";
+      if (photoFile) ({ photoURL, photoPath } = await uploadProfilePhoto(user.uid, photoFile));
+      else if (photoRemoved) { photoURL = ""; photoPath = ""; }
+      await updateTeacherProfile(user.uid, { displayName, photoURL, photoPath });
+      setPhotoFile(null);
+      setPhotoPreview("");
+      setPhotoRemoved(false);
+      await refreshProfile?.();
       setMessage("Profile updated.");
     } catch (error) {
       setMessage(error?.message || "Unable to update profile.");
@@ -760,11 +793,33 @@ function ProfileView({ user, profile }) {
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
         />
-        <Field
-          label="Photo URL"
-          value={photoURL}
-          onChange={(e) => setPhotoURL(e.target.value)}
-        />
+        <div className="grid gap-2 text-xs font-semibold text-muted">
+          Profile photo
+          <div className="flex flex-wrap items-center gap-3">
+            {currentPhoto ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={currentPhoto} alt="Profile" className="h-16 w-16 shrink-0 rounded-full border border-border-subtle object-cover" />
+            ) : (
+              <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full border border-border-subtle bg-page text-base font-bold text-subtle">
+                {(displayName || "?").trim().slice(0, 2).toUpperCase()}
+              </span>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <label className="inline-flex w-fit cursor-pointer items-center rounded-xl border border-border-subtle bg-page px-3 py-1.5 text-xs font-bold text-ink hover:bg-active">
+                {currentPhoto ? "Change photo" : "Upload photo"}
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={pickPhoto} disabled={saving} className="hidden" />
+              </label>
+              {currentPhoto && (
+                <button type="button" onClick={() => { setPhotoFile(null); setPhotoPreview(""); setPhotoRemoved(true); setPhotoError(""); }} disabled={saving} className="w-fit text-[11px] font-bold text-primary hover:underline disabled:opacity-50">
+                  Remove photo
+                </button>
+              )}
+              {photoFile && <span className="max-w-[220px] truncate text-[10px] text-subtle">{photoFile.name}</span>}
+              <span className="text-[10px] font-normal text-subtle">JPG, PNG or WEBP · up to 5 MB</span>
+              {photoError && <span className="text-[10px] font-semibold text-primary">{photoError}</span>}
+            </div>
+          </div>
+        </div>
         <button
           onClick={save}
           disabled={saving}
@@ -774,114 +829,6 @@ function ProfileView({ user, profile }) {
         </button>
         {message && <p className="text-xs text-muted">{message}</p>}
       </div>
-    </Panel>
-  );
-}
-
-function DocumentsView({ data, teacherId }) {
-  const [documents, setDocuments] = useState([]);
-  const [search, setSearch] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [title, setTitle] = useState("");
-  const [courseId, setCourseId] = useState("");
-  const [message, setMessage] = useState("");
-
-  useEffect(
-    () => subscribeTeacherDocuments(teacherId, setDocuments, () => {}),
-    [teacherId],
-  );
-
-  async function handleUpload(event) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setUploading(true);
-    setMessage("");
-    try {
-      await uploadTeacherDocument(teacherId, file, { title: title || file.name, courseId });
-      setTitle("");
-      setMessage("Document uploaded.");
-    } catch (error) {
-      setMessage(error?.message || "Unable to upload document.");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function remove(item) {
-    await deleteTeacherDocument(item.id, item.storagePath);
-  }
-
-  const filtered = documents.filter((item) =>
-    `${item.title} ${item.fileName}`.toLowerCase().includes(search.toLowerCase()),
-  );
-
-  return (
-    <Panel
-      title="Documents"
-      action={
-        <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search documents"
-          className="w-40 rounded-xl border border-border-subtle bg-page px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary"
-        />
-      }
-    >
-      <div className="mb-5 flex flex-wrap items-end gap-2 rounded-2xl bg-page p-4">
-        <Field
-          label="Title (optional)"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Document title"
-        />
-        <label className="grid gap-1 text-xs font-semibold text-muted">
-          Course (optional)
-          <select
-            value={courseId}
-            onChange={(event) => setCourseId(event.target.value)}
-            className="rounded-xl border border-border-subtle bg-page px-3 py-2.5 text-xs"
-          >
-            <option value="">No course</option>
-            {data.courses.map((course) => (
-              <option key={course.id} value={course.id}>
-                {course.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white">
-          {uploading ? "Uploading..." : "Upload file"}
-          <input type="file" onChange={handleUpload} disabled={uploading} className="hidden" />
-        </label>
-      </div>
-      {message && <p className="mb-3 text-xs text-muted">{message}</p>}
-      {filtered.length ? (
-        <div className="space-y-2">
-          {filtered.map((item) => (
-            <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-page p-3 text-xs">
-              <div className="min-w-0">
-                <b className="block truncate">{item.title}</b>
-                <span className="text-muted">
-                  {item.status === "ready" ? item.fileName : item.status}
-                </span>
-              </div>
-              <div className="flex shrink-0 gap-3">
-                {item.fileUrl && (
-                  <a href={item.fileUrl} target="_blank" rel="noreferrer" className="font-bold text-primary">
-                    Download
-                  </a>
-                )}
-                <button onClick={() => remove(item)} className="font-bold text-subtle hover:text-primary">
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <Empty>No documents found</Empty>
-      )}
     </Panel>
   );
 }
@@ -1274,7 +1221,7 @@ export default function TeacherWorkspacePage({ module = "Dashboard" }) {
   ) : module === "Scan QR Code" ? (
     <ScanQrView data={data} teacherId={user.uid} />
   ) : module === "Documents" ? (
-    <DocumentsView data={data} teacherId={user.uid} />
+    <DocumentsModule role={profile?.role === "Facilitator" ? "Facilitator" : "Teacher"} />
   ) : module === "Promote" ? (
     <PromoteView data={data} teacherId={user.uid} />
   ) : module === "Chat" ? (

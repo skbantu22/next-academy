@@ -33,7 +33,7 @@ function initialsFrom(name) {
 }
 
 export default function SettingsPage() {
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const [editing, setEditing] = useState(false);
   const [showIdCard, setShowIdCard] = useState(false);
   const [certificates, setCertificates] = useState([]);
@@ -315,7 +315,7 @@ export default function SettingsPage() {
       </div>
 
       {editing && (
-        <EditProfileModal uid={user?.uid} profile={profile} onClose={() => setEditing(false)} onSaved={() => {}} />
+        <EditProfileModal uid={user?.uid} profile={profile} onClose={() => setEditing(false)} onSaved={() => refreshProfile?.()} />
       )}
 
       {showIdCard && (

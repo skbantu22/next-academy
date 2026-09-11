@@ -36,6 +36,8 @@ import AdminShell from "../dashboard/AdminShell";
 import WorkspaceShell from "../dashboard/WorkspaceShell";
 import Spinner from "../ui/Spinner";
 import EnrollmentManager from "./EnrollmentManager";
+import DocumentsModule from "../documents/DocumentsModule";
+import DataTable, { StatusBadge as TableBadge } from "../data-table/DataTable";
 
 // Same Admin/Director module list used by app/dashboard/[role]/page.jsx's
 // roleConfig.Director/Admin — duplicated here (a static, rarely-changing
@@ -74,6 +76,7 @@ const teacherTabs = [
   "Classes",
   "Attendance",
   "Assessment",
+  "Materials",
 ];
 
 function Empty({ children }) {
@@ -469,9 +472,11 @@ export default function TrainingDetailsPage() {
             </Panel>
           )}
           {tab === "Materials" && (
-            <Panel title="Materials">
-              <Empty>Lesson materials are coming in a later update.</Empty>
-            </Panel>
+            <DocumentsModule
+              role={profile?.role || "Teacher"}
+              courseId={course.id}
+              courseName={course.title}
+            />
           )}
           {tab === "Assign" && canManage && <AssignTab course={course} />}
           {tab === "Assign" && !canManage && (
@@ -647,6 +652,12 @@ function AttendanceTab({
       : classes[0]?.id || "";
   const effectiveDate = selectedSession ? selectedSession.date : date;
 
+  const studentName = (id) => {
+    const s = students.find((item) => item.id === id);
+    return s?.displayName || s?.email || id || "—";
+  };
+  const className = (id) => classes.find((item) => item.id === id)?.name || id || "—";
+
   const rate = useMemo(() => {
     return students.reduce((result, student) => {
       result[student.id] = attendancePercent(
@@ -754,6 +765,26 @@ function AttendanceTab({
                 </div>
               );
             })}
+          </div>
+
+          <div className="mt-6">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-subtle">All attendance records</p>
+            <DataTable
+              title="attendance"
+              name={`attendance-${courseId}`}
+              columns={[
+                { key: "student", header: "Student", sortable: true, accessor: (r) => studentName(r.studentId), render: (r) => <b className="text-ink">{studentName(r.studentId)}</b> },
+                { key: "date", header: "Date", sortable: true, accessor: (r) => r.date || "" },
+                { key: "status", header: "Status", sortable: true, filter: {}, accessor: (r) => (r.status ? r.status[0].toUpperCase() + r.status.slice(1) : ""), render: (r) => <TableBadge tone={{ present: "green", absent: "red", late: "orange", excused: "blue" }[r.status] || "gray"}>{r.status || "—"}</TableBadge> },
+                { key: "class", header: "Class", sortable: true, filter: {}, accessor: (r) => className(r.classId) },
+                { key: "markedByName", header: "Marked By", accessor: (r) => r.markedByName || r.teacherName || "" },
+              ]}
+              rows={attendance}
+              getRowId={(r) => r.id || `${r.studentId}_${r.date}_${r.classId}`}
+              initialSort={{ key: "date", dir: "desc" }}
+              pageSize={10}
+              emptyLabel="No attendance has been marked yet."
+            />
           </div>
         </>
       )}

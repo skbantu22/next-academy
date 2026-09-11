@@ -55,6 +55,17 @@ service cloud.firestore {
     match /expenses/{expenseId} {
       allow read, write: if admin();
     }
+    // Manual academy income (Finance → Income) — registration/event fees,
+    // donations, and other non-tuition money in. Admin/Director only, same
+    // as expenses. Every mutation happens server-side via
+    // /api/admin/finance/income (Admin SDK), which bypasses these rules and
+    // sets createdBy from the verified token; this block only backstops
+    // direct client access attempts. Kept separate from `payments` so a
+    // manually-logged donation is never mistaken for a student tuition
+    // payment or applied to an outstanding balance.
+    match /finance_income/{incomeId} {
+      allow read, write: if admin();
+    }
     match /courses/{courseId} {
       allow read: if admin() || (teacher() && resource.data.teacherIds.hasAny([request.auth.uid])) || enrolledInCourse(courseId);
       allow create: if admin() || (teacher() && request.resource.data.teacherIds.hasOnly([request.auth.uid]));
@@ -200,10 +211,21 @@ service cloud.firestore {
         allow delete: if admin() || (signedIn() && resource.data.senderId == request.auth.uid);
       }
     }
+    // LMS Documents / Learning Materials. The whole module now reads and
+    // writes exclusively through /api/documents + /api/documents/folders
+    // (Admin SDK, which bypasses these rules). That server layer is the
+    // single place visibility is decided — always against the AUTHENTICATED
+    // user's real role + enrollment/assignment data
+    // (lib/server/documents-core.js's canAccessDocument), so a Student can
+    // never reach a Draft, an archived doc, another course's private
+    // material, or another student's document by changing an id in the
+    // request. There is deliberately NO direct client path: a Student can't
+    // even getDoc() a document by guessing its id.
     match /documents/{documentId} {
-      allow read: if admin() || (teacher() && (resource.data.teacherId == request.auth.uid || ('teacherIds' in resource.data && resource.data.teacherIds.hasAny([request.auth.uid]))));
-      allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid);
-      allow update, delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
+      allow read, write: if false;
+    }
+    match /documentFolders/{folderId} {
+      allow read, write: if false;
     }
     match /promotionLinks/{linkId} {
       allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid);
@@ -277,6 +299,55 @@ service cloud.firestore {
     match /certificateTemplates/{templateId} {
       allow read: if admin() || teacher();
       allow write: if admin();
+    }
+    // Room Booking — the classroom reservation calendar.
+    //
+    // `rooms` is the single, fully dynamic source of truth for classrooms
+    // (there is no fixed 3/4/5 list anywhere): Admin/Director add / edit /
+    // deactivate rooms here and the booking filter, the Book-Room form's
+    // room dropdown and every calendar column are generated from this
+    // collection at runtime. Staff may read it (a Teacher can view the
+    // schedule); only Admin/Director may write.
+    match /rooms/{roomId} {
+      allow read: if admin() || teacher();
+      allow create, update: if admin()
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120
+        && request.resource.data.status in ['active', 'inactive'];
+      allow delete: if admin();
+    }
+    // One booking holds one physical `rooms/{roomId}` for one EXISTING
+    // course + class + teacher on one date/time range; courseId / classId /
+    // teacherId reference the existing collections (never a duplicate
+    // course/class/teacher record). Reads are open to staff; students have
+    // no access, matching the app's existing lack of any global schedule
+    // view for students. Writes are Admin/Director only and go straight
+    // through the client SDK (no server route) so a booking created offline
+    // is queued by Firestore's own persistence and syncs on reconnect. A
+    // security rule can't query the collection for an overlapping time
+    // range, so the double-booking (same room + date + overlapping time)
+    // check runs client-side in lib/room-booking-data.js before every write
+    // and any collision that still slips through (two people booking while
+    // both offline) is surfaced afterwards, never silently accepted.
+    match /roomBookings/{bookingId} {
+      allow read: if admin() || teacher();
+      allow create: if admin()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.roomId is string && request.resource.data.roomId.size() > 0
+        && exists(/databases/$(database)/documents/rooms/$(request.resource.data.roomId))
+        && request.resource.data.courseId is string && request.resource.data.courseId.size() > 0
+        && request.resource.data.classId is string && request.resource.data.classId.size() > 0
+        && request.resource.data.teacherId is string && request.resource.data.teacherId.size() > 0
+        && request.resource.data.date is string
+        && request.resource.data.startTime is string
+        && request.resource.data.endTime is string
+        && request.resource.data.startTime < request.resource.data.endTime
+        && request.resource.data.status == 'scheduled';
+      allow update: if admin()
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.roomId is string
+        && request.resource.data.status in ['scheduled', 'cancelled']
+        && request.resource.data.startTime < request.resource.data.endTime;
+      allow delete: if admin();
     }
     match /{document=**} { allow read, write: if false; }
   }

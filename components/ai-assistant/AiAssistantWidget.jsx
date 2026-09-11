@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Bot, X } from "lucide-react";
 import { useAuth } from "../../lib/auth-context";
+import { useFloatingAssistantHidden } from "../../lib/fab-visibility";
 import AiAssistantPanel from "./AiAssistantPanel";
 
 // Mounted once, at the root layout, so every authenticated page gets the
@@ -11,8 +12,12 @@ import AiAssistantPanel from "./AiAssistantPanel";
 export default function AiAssistantWidget() {
   const { user, loading } = useAuth();
   const [open, setOpen] = useState(false);
+  const hidden = useFloatingAssistantHidden();
 
   if (loading || !user) return null;
+  // The Chat workspace hides this while it's mounted so the round FAB (and
+  // its panel) never overlap the message composer in the bottom-right.
+  if (hidden) return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">

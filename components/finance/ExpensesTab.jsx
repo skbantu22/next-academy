@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
 import { stopEnterSubmit } from "../../lib/ui/keyboard";
 import { createExpense, deleteExpense as deleteExpenseRequest, updateExpense } from "../../lib/services/finance-service";
 import { formatDate, formatMoney } from "../training/PaymentHistoryTable";
+import { useConfirm } from "../ui/ConfirmDialog";
+import DataTable, { StatusBadge } from "../data-table/DataTable";
 
 const categories = ["Rent", "Salary", "Utilities", "Equipment", "Marketing", "Transport", "Maintenance", "Software", "Training Materials", "Other"];
 const methods = ["Cash", "Bank Transfer", "Card", "Other"];
@@ -101,25 +102,30 @@ function ExpenseForm({ initial, saving, onCancel, onSubmit }) {
 }
 
 export default function ExpensesTab({ expenses, loading, onChanged }) {
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("All");
-  const [dateFilter, setDateFilter] = useState("");
+  const confirm = useConfirm();
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const filtered = useMemo(
-    () =>
-      expenses.filter(
-        (item) =>
-          (categoryFilter === "All" || item.category === categoryFilter) &&
-          (!dateFilter || item.expenseDate === dateFilter) &&
-          `${item.category} ${item.description}`.toLowerCase().includes(search.trim().toLowerCase()),
-      ),
-    [expenses, categoryFilter, dateFilter, search],
+  const dated = useMemo(
+    () => expenses.filter((item) => (!from || (item.expenseDate || "") >= from) && (!to || (item.expenseDate || "") <= to)),
+    [expenses, from, to],
   );
+
+  const columns = useMemo(() => [
+    { key: "id", header: "Expense ID", accessor: (e) => e.id, render: (e) => <span className="font-mono text-[11px] text-muted">{e.id.slice(0, 10)}…</span> },
+    { key: "category", header: "Category", sortable: true, filter: {}, accessor: (e) => e.category || "", render: (e) => <StatusBadge tone="purple">{e.category}</StatusBadge> },
+    { key: "amount", header: "Amount", align: "right", sortable: true, accessor: (e) => Number(e.amount || 0), render: (e) => <b className="text-warning">{formatMoney(e.amount)}</b>, exportValue: (e) => Number(e.amount || 0) },
+    { key: "expenseDate", header: "Date", sortable: true, accessor: (e) => e.expenseDate || "", exportValue: (e) => e.expenseDate || "", render: (e) => <span className="text-xs">{formatDate(e.expenseDate)}</span> },
+    { key: "paymentMethod", header: "Method", sortable: true, filter: {}, accessor: (e) => e.paymentMethod || "" },
+    { key: "description", header: "Description", accessor: (e) => e.description || "", render: (e) => <span className="block max-w-[220px] truncate text-xs text-muted">{e.description || "—"}</span> },
+    { key: "reference", header: "Reference", accessor: (e) => e.reference || "" },
+    { key: "recordedByName", header: "Recorded By", sortable: true, accessor: (e) => e.recordedByName || "" },
+  ], []);
 
   async function handleCreate(values) {
     setSaving(true);
@@ -144,7 +150,12 @@ export default function ExpensesTab({ expenses, loading, onChanged }) {
     }
   }
   async function handleDelete(expense) {
-    if (!window.confirm(`Delete this ${expense.category} expense of ${formatMoney(expense.amount)}? This cannot be undone.`)) return;
+    if (!(await confirm({
+      title: "Delete expense",
+      message: `Delete this ${expense.category} expense of ${formatMoney(expense.amount)}? This cannot be undone.`,
+      tone: "danger",
+      confirmLabel: "Delete",
+    }))) return;
     setError("");
     try {
       await deleteExpenseRequest(expense.id);
@@ -157,17 +168,13 @@ export default function ExpensesTab({ expenses, loading, onChanged }) {
 
   return (
     <section className="rounded-3xl border border-border-subtle bg-white p-5 shadow-sm md:p-6">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="relative min-w-48 flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-subtle" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search expenses" className="w-full rounded-xl border border-border-subtle bg-page py-2 pl-9 pr-3 text-sm" />
-          </label>
-          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 text-sm">
-            <option value="All">All categories</option>
-            {categories.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
-          <input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 text-sm" />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-muted">
+          <span>Date range</span>
+          <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 font-normal" />
+          <span>–</span>
+          <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 font-normal" />
+          {(from || to) && <button type="button" onClick={() => { setFrom(""); setTo(""); }} className="text-primary">clear</button>}
         </div>
         <button type="button" onClick={() => setAdding(true)} className="rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white">
           + Add Expense
@@ -177,41 +184,22 @@ export default function ExpensesTab({ expenses, loading, onChanged }) {
       {message && <p className="mb-3 rounded-xl bg-success-soft p-3 text-xs text-success">{message}</p>}
       {error && <p className="mb-3 rounded-xl bg-active p-3 text-xs text-primary">{error}</p>}
 
-      {loading ? (
-        <p className="py-10 text-center text-sm text-muted">Loading expenses...</p>
-      ) : filtered.length ? (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="border-b text-[10px] uppercase tracking-wider text-subtle">
-              <tr>
-                {["Expense ID", "Category", "Amount", "Date", "Method", "Description", "Reference", "Created By", "Actions"].map((label) => (
-                  <th key={label} className="p-3">{label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((item) => (
-                <tr key={item.id} className="border-b border-border-subtle">
-                  <td className="max-w-28 truncate p-3 font-mono text-xs text-muted" title={item.id}>{item.id}</td>
-                  <td className="p-3 text-xs font-bold text-ink">{item.category}</td>
-                  <td className="p-3 text-xs font-bold text-warning">{formatMoney(item.amount)}</td>
-                  <td className="p-3 text-xs">{formatDate(item.expenseDate)}</td>
-                  <td className="p-3 text-xs text-muted">{item.paymentMethod}</td>
-                  <td className="max-w-[200px] truncate p-3 text-xs text-muted">{item.description || "—"}</td>
-                  <td className="p-3 text-xs text-muted">{item.reference || "—"}</td>
-                  <td className="p-3 text-xs text-muted">{item.recordedByName}</td>
-                  <td className="space-x-3 p-3 text-xs font-bold">
-                    <button type="button" onClick={() => setEditing(item)} className="text-ink">Edit</button>
-                    <button type="button" onClick={() => handleDelete(item)} className="text-primary">Delete</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="py-10 text-center text-sm text-muted">No expenses recorded yet.</p>
-      )}
+      <DataTable
+        title="expenses"
+        name="expenses"
+        columns={columns}
+        rows={dated}
+        loading={loading}
+        initialSort={{ key: "expenseDate", dir: "desc" }}
+        pageSize={10}
+        emptyLabel="No expenses recorded yet."
+        rowActions={(item) => (
+          <>
+            <button type="button" onClick={() => setEditing(item)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-ink hover:bg-page">Edit</button>
+            <button type="button" onClick={() => handleDelete(item)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-primary hover:bg-page">Delete</button>
+          </>
+        )}
+      />
 
       {adding && (
         <Dialog title="Add Expense" close={() => setAdding(false)}>

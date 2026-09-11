@@ -1,6 +1,8 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "../lib/auth-context";
+import { ToastProvider } from "../components/ui/Toast";
+import { ConfirmProvider } from "../components/ui/ConfirmDialog";
 import PwaRegister from "../components/PwaRegister";
 import AiAssistantWidget from "../components/ai-assistant/AiAssistantWidget";
 
@@ -32,8 +34,12 @@ export default function RootLayout({ children }) {
     >
       <body className="min-h-full flex flex-col">
         <AuthProvider>
-          {children}
-          <AiAssistantWidget />
+          <ToastProvider>
+            <ConfirmProvider>
+              {children}
+              <AiAssistantWidget />
+            </ConfirmProvider>
+          </ToastProvider>
         </AuthProvider>
         <PwaRegister />
       </body>

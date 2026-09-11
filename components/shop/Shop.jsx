@@ -7,16 +7,20 @@ import {
   createProduct, updateProduct, deleteProduct, uploadProductImage, updateOrderStatus, updateOrderCollection,
   createCategory, updateCategory, deleteCategory, uploadCategoryImage,
 } from "../../lib/shop-data";
-import { subscribeAllClassSessions } from "../../lib/class-sessions-data";
-import { formatSessionDate } from "../../lib/useCollectionSessions";
 import Spinner from "../ui/Spinner";
 import ProductOrderModal from "./ProductOrderModal";
 import CartCheckoutModal from "./CartCheckoutModal";
+import DataTable from "../data-table/DataTable";
 import { useAuth } from "../../lib/auth-context";
 
 const managers = new Set(["Admin", "Director"]);
 const dash = "—";
 const money = (value) => `$${Number(value || 0).toFixed(2)}`;
+function formatDate(value) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 const LOW_STOCK_THRESHOLD = 5;
 const SORT_OPTIONS = [
   ["newest", "Newest"],
@@ -201,6 +205,23 @@ function CategoryForm({ form, setForm, saving, error, onCancel, onSubmit, imageP
   );
 }
 
+function PickupEditor({ order, saving, onSave, onCancel }) {
+  const [date, setDate] = useState(order.collectionDate || "");
+  return (
+    <div>
+      <p className="mb-3 text-sm text-muted">Order <b className="font-mono">#{order.orderNumber || order.id}</b></p>
+      <label className="grid gap-1 text-xs font-bold text-muted">
+        Collection Date
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={saving} className="rounded-xl border border-border-subtle px-3 py-2.5 text-sm font-normal" />
+      </label>
+      <div className="mt-5 flex justify-end gap-3">
+        <button type="button" onClick={onCancel} disabled={saving} className="rounded-xl px-4 py-2.5 text-sm font-bold text-muted">Cancel</button>
+        <button type="button" onClick={() => onSave(date)} disabled={saving} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">{saving ? "Saving..." : "Save"}</button>
+      </div>
+    </div>
+  );
+}
+
 export default function Shop({ role, uid }) {
   const { profile } = useAuth();
   const canManage = managers.has(role);
@@ -219,6 +240,7 @@ export default function Shop({ role, uid }) {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [showCartCheckout, setShowCartCheckout] = useState(false);
+  const [showCartDrawer, setShowCartDrawer] = useState(false);
 
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -245,9 +267,7 @@ export default function Shop({ role, uid }) {
   // category already selected — not just close everything.
   const [returnToProductForm, setReturnToProductForm] = useState(false);
 
-  // Admin/Director "Change Pickup" — every real class session, so they can
-  // (re)assign an order's real collection session after the fact.
-  const [allSessions, setAllSessions] = useState([]);
+  // Admin/Director "Change Pickup" — reassign an order's collection date.
   const [editingPickupOrder, setEditingPickupOrder] = useState(null);
   const [pickupSaving, setPickupSaving] = useState(false);
 
@@ -260,10 +280,6 @@ export default function Shop({ role, uid }) {
   useEffect(() => {
     if (!canManage) return undefined;
     return subscribeAllOrders(setAllOrders, () => {});
-  }, [canManage]);
-  useEffect(() => {
-    if (!canManage) return undefined;
-    return subscribeAllClassSessions(setAllSessions, () => {});
   }, [canManage]);
 
   useEffect(() => {
@@ -301,6 +317,7 @@ export default function Shop({ role, uid }) {
     [cart, products],
   );
   const cartTotal = cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   function setQuantity(productId, quantity, maxStock) {
     setCart((current) => ({ ...current, [productId]: Math.max(0, Math.min(quantity, maxStock)) }));
@@ -493,12 +510,11 @@ export default function Shop({ role, uid }) {
     }
   }
 
-  async function savePickup(sessionId) {
+  async function savePickup(dateValue) {
     if (!editingPickupOrder || pickupSaving) return;
     setPickupSaving(true);
     try {
-      const session = sessionId ? allSessions.find((item) => item.id === sessionId) : null;
-      await updateOrderCollection(editingPickupOrder.id, session);
+      await updateOrderCollection(editingPickupOrder.id, dateValue);
       setNotice("Pickup date updated.");
       setEditingPickupOrder(null);
     } catch (e) {
@@ -542,7 +558,7 @@ export default function Shop({ role, uid }) {
       </div>
 
       {tab === "Shop" && (
-        <div className={`grid gap-6 ${canManage ? "" : "lg:grid-cols-[1fr_.7fr]"}`}>
+        <>
           <section>
             {/* Category navigation — dynamically generated from real
                 productCategories docs, never hardcoded. "All" is a
@@ -587,13 +603,28 @@ export default function Shop({ role, uid }) {
                 <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle" aria-hidden="true" />
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products..." className="w-full rounded-xl border border-border-subtle bg-white py-2.5 pl-10 pr-3 text-sm shadow-sm" />
               </label>
-              <label className="flex shrink-0 items-center gap-2 text-xs font-bold text-muted">
-                <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
-                Sort by
-                <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-xl border border-border-subtle bg-white px-3 py-2.5 text-xs font-bold text-ink shadow-sm">
-                  {SORT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-              </label>
+              <div className="flex shrink-0 items-center gap-3">
+                <label className="flex items-center gap-2 text-xs font-bold text-muted">
+                  <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
+                  Sort by
+                  <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-xl border border-border-subtle bg-white px-3 py-2.5 text-xs font-bold text-ink shadow-sm">
+                    {SORT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
+                {!canManage && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCartDrawer(true)}
+                    className="relative flex items-center gap-2 rounded-xl border border-border-subtle bg-white px-3.5 py-2.5 text-xs font-bold text-ink shadow-sm transition hover:border-primary hover:text-primary"
+                  >
+                    <ShoppingCart className="h-4 w-4" aria-hidden="true" />
+                    Cart
+                    {cartCount > 0 && (
+                      <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10px] font-black text-white">{cartCount}</span>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
 
             {!productsLoaded ? (
@@ -703,97 +734,37 @@ export default function Shop({ role, uid }) {
               </div>
             )}
           </section>
-
-          {!canManage && (
-            <section className="h-fit rounded-3xl border border-border-subtle bg-white p-5 shadow-sm md:p-6">
-              <div className="mb-4 flex items-center gap-2">
-                <ShoppingCart className="h-5 w-5 text-primary" aria-hidden="true" />
-                <b className="text-sm text-ink">Your cart</b>
-              </div>
-              {!cartItems.length ? (
-                <p className="text-sm text-muted">Your cart is empty.</p>
-              ) : (
-                <>
-                  <div className="space-y-3">
-                    {cartItems.map(({ product, quantity }) => (
-                      <div key={product.id} className="flex items-center justify-between gap-2 text-sm">
-                        <span className="min-w-0 flex-1 truncate">{product.name} × {quantity}</span>
-                        <span className="font-bold text-ink">{money(product.price * quantity)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-4 flex items-center justify-between border-t border-border-subtle pt-4 text-sm font-bold text-ink">
-                    <span>Total</span>
-                    <span>{money(cartTotal)}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCheckout}
-                    className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-bold text-white disabled:opacity-60"
-                  >
-                    Checkout
-                  </button>
-                </>
-              )}
-            </section>
-          )}
-        </div>
+        </>
       )}
 
       {tab === "Orders" && (
         <section className="rounded-3xl border border-border-subtle bg-white p-5 shadow-sm md:p-6">
           <h3 className="mb-1 font-bold text-ink">{canManage ? "All orders" : "My orders"}</h3>
           <p className="mb-4 text-xs text-muted">{canManage ? "Every order placed across the shop." : "Your own order history."}</p>
-          {!ordersToShow.length ? (
-            <p className="py-10 text-center text-sm text-muted">No orders yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px] text-left text-sm">
-                <thead className="border-b text-[10px] uppercase tracking-wider text-subtle">
-                  <tr>{["Order #", ...(canManage ? ["Buyer"] : []), "Items", "Collection", "Total", "Status", ...(canManage ? ["Actions"] : [])].map((label) => <th key={label} className="p-3">{label}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {[...ordersToShow].sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)).map((order) => (
-                    <tr key={order.id} className="border-b border-border-subtle align-top">
-                      <td className="p-3 font-mono text-xs text-muted">{order.orderNumber || dash}</td>
-                      {canManage && (
-                        <td className="p-3">
-                          <b className="block text-ink">{order.customerName || order.buyerName || dash}</b>
-                          <span className="block text-xs text-muted">{order.customerPhone || dash}</span>
-                          <span className="text-xs text-muted">{order.customerEmail || order.buyerEmail}</span>
-                        </td>
-                      )}
-                      <td className="p-3 text-muted">
-                        {(order.items || []).map((item) => (
-                          <div key={item.productId}>
-                            {item.name}{item.variantLabel ? ` (${item.variantLabel})` : ""} × {item.quantity}
-                          </div>
-                        ))}
-                        {order.notes && <p className="mt-1 text-[11px] italic text-subtle">“{order.notes}”</p>}
-                      </td>
-                      <td className="p-3 text-xs text-muted">
-                        {order.collection ? (
-                          <>
-                            <span className="block">{order.collection.date}{order.collection.startTime ? ` · ${order.collection.startTime}` : ""}</span>
-                            {order.collection.location && <span className="block">{order.collection.location}</span>}
-                          </>
-                        ) : dash}
-                      </td>
-                      <td className="p-3 font-bold text-ink">{money(order.totalAmount)}</td>
-                      <td className="p-3"><StatusBadge status={order.status} /></td>
-                      {canManage && (
-                        <td className="space-x-3 whitespace-nowrap p-3 text-xs font-bold">
-                          {order.status !== "fulfilled" && <button type="button" onClick={() => markOrder(order, "fulfilled")} className="text-success hover:underline">Mark fulfilled</button>}
-                          {order.status !== "cancelled" && <button type="button" onClick={() => markOrder(order, "cancelled")} className="text-primary hover:underline">Cancel</button>}
-                          <button type="button" onClick={() => setEditingPickupOrder(order)} className="text-info hover:underline">Change Pickup</button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <DataTable
+            title="orders"
+            name="shop-orders"
+            enableExport={canManage}
+            columns={[
+              { key: "orderNumber", header: "Order #", sortable: true, accessor: (o) => o.orderNumber || o.id, render: (o) => <span className="font-mono text-xs text-muted">{o.orderNumber || dash}</span> },
+              ...(canManage ? [{ key: "customerName", header: "Buyer", sortable: true, accessor: (o) => `${o.customerName || o.buyerName || ""} ${o.customerEmail || o.buyerEmail || ""}`, render: (o) => <span><b className="block text-ink">{o.customerName || o.buyerName || dash}</b><span className="block text-[11px] text-muted">{o.customerPhone || ""}</span><span className="text-[11px] text-muted">{o.customerEmail || o.buyerEmail}</span></span>, exportValue: (o) => o.customerName || o.buyerName || "" }] : []),
+              { key: "items", header: "Items", accessor: (o) => (o.items || []).map((i) => `${i.name}${i.variantLabel ? ` (${i.variantLabel})` : ""} × ${i.quantity}`).join("; "), render: (o) => <span className="text-xs text-muted">{(o.items || []).map((i) => <span key={i.productId} className="block">{i.name}{i.variantLabel ? ` (${i.variantLabel})` : ""} × {i.quantity}</span>)}</span> },
+              { key: "collectionDate", header: "Collection", sortable: true, accessor: (o) => o.collectionDate || "", render: (o) => <span className="text-xs text-muted">{o.collectionDate ? formatDate(o.collectionDate) : dash}</span> },
+              { key: "totalAmount", header: "Total", align: "right", sortable: true, accessor: (o) => Number(o.totalAmount || 0), render: (o) => <b className="text-ink">{money(o.totalAmount)}</b>, exportValue: (o) => Number(o.totalAmount || 0) },
+              { key: "status", header: "Status", sortable: true, filter: {}, accessor: (o) => o.status || "pending", render: (o) => <StatusBadge status={o.status} /> },
+            ]}
+            rows={[...ordersToShow].sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))}
+            initialSort={null}
+            pageSize={10}
+            emptyLabel="No orders yet."
+            rowActions={canManage ? (order) => (
+              <>
+                {order.status !== "fulfilled" && <button type="button" onClick={() => markOrder(order, "fulfilled")} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-success hover:bg-page">Fulfil</button>}
+                {order.status !== "cancelled" && <button type="button" onClick={() => markOrder(order, "cancelled")} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-primary hover:bg-page">Cancel</button>}
+                <button type="button" onClick={() => setEditingPickupOrder(order)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-info hover:bg-page">Pickup</button>
+              </>
+            ) : undefined}
+          />
         </section>
       )}
 
@@ -901,24 +872,7 @@ export default function Shop({ role, uid }) {
 
       {editingPickupOrder && (
         <Dialog title="Change Pickup Date" onClose={() => setEditingPickupOrder(null)}>
-          <p className="mb-3 text-sm text-muted">Order <b className="font-mono">#{editingPickupOrder.orderNumber || editingPickupOrder.id}</b></p>
-          <label className="grid gap-1 text-xs font-bold text-muted">
-            Collection Date
-            <select
-              defaultValue={editingPickupOrder.collection?.sessionId || ""}
-              onChange={(e) => savePickup(e.target.value)}
-              disabled={pickupSaving}
-              className="rounded-xl border border-border-subtle px-3 py-2.5 text-sm font-normal"
-            >
-              <option value="">No specific pickup</option>
-              {allSessions.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {session.title ? `${session.title} · ` : ""}{formatSessionDate(session.date)}{session.startTime ? ` · ${session.startTime}` : ""}{session.location ? ` at ${session.location}` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          {pickupSaving && <p className="mt-2 text-xs text-muted">Saving...</p>}
+          <PickupEditor order={editingPickupOrder} saving={pickupSaving} onSave={savePickup} onCancel={() => setEditingPickupOrder(null)} />
         </Dialog>
       )}
 
@@ -940,6 +894,63 @@ export default function Shop({ role, uid }) {
             <button type="button" onClick={confirmDeleteCategoryAction} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white">Delete</button>
           </div>
         </Dialog>
+      )}
+
+      {/* Cart lives in a right-hand slide-over now (not a column beside the
+          product grid) so the storefront grid is full-width and matches the
+          Admin/Director Shop tab. Managers never see this — they don't buy. */}
+      {showCartDrawer && !canManage && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/50" role="dialog" aria-modal="true" onClick={() => setShowCartDrawer(false)}>
+          <div className="flex h-full w-full max-w-sm flex-col bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-border-subtle p-5">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5 text-primary" aria-hidden="true" />
+                <b className="text-sm text-ink">Your cart{cartCount > 0 ? ` (${cartCount})` : ""}</b>
+              </div>
+              <button type="button" onClick={() => setShowCartDrawer(false)} className="text-xl text-muted" aria-label="Close cart">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              {!cartItems.length ? (
+                <p className="text-sm text-muted">Your cart is empty. Add products from the shop to get started.</p>
+              ) : (
+                <div className="space-y-4">
+                  {cartItems.map(({ product, quantity }) => (
+                    <div key={product.id} className="flex gap-3">
+                      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-page">
+                        {product.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={product.imageUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="grid h-full w-full place-items-center text-subtle"><ShoppingBag className="h-5 w-5" aria-hidden="true" /></div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <b className="block truncate text-sm text-ink">{product.name}</b>
+                        <span className="text-xs text-muted">{money(product.price)}</span>
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <button type="button" onClick={() => setQuantity(product.id, quantity - 1, product.stock)} className="grid h-6 w-6 place-items-center rounded border border-border-subtle text-muted"><Minus className="h-3 w-3" /></button>
+                          <span className="w-5 text-center text-xs font-bold">{quantity}</span>
+                          <button type="button" disabled={quantity >= product.stock} onClick={() => setQuantity(product.id, quantity + 1, product.stock)} className="grid h-6 w-6 place-items-center rounded border border-border-subtle text-muted disabled:opacity-40"><Plus className="h-3 w-3" /></button>
+                          <button type="button" onClick={() => setQuantity(product.id, 0, product.stock)} className="ml-auto text-[11px] font-bold text-primary hover:underline">Remove</button>
+                        </div>
+                      </div>
+                      <span className="shrink-0 text-sm font-bold text-ink">{money(product.price * quantity)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {cartItems.length > 0 && (
+              <div className="border-t border-border-subtle p-5">
+                <div className="mb-3 flex items-center justify-between text-sm font-bold text-ink">
+                  <span>Total</span>
+                  <span>{money(cartTotal)}</span>
+                </div>
+                <button type="button" onClick={() => { setShowCartDrawer(false); handleCheckout(); }} className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white">Checkout</button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {orderingProduct && (

@@ -7,6 +7,7 @@ import { CalendarDays, Eye, EyeOff, MapPin, Pencil, Search, Trash2, UserRound, U
 import { ChartCard, EmptyChartState } from "../dashboard/overview/ChartCard";
 import EventCalendar from "./EventCalendar";
 import EventForm from "./EventForm";
+import DataTable, { StatusBadge as TableBadge } from "../data-table/DataTable";
 import { createEvent, deleteEvent, loadEvents, setEventPublished, updateEvent, uploadEventBanner } from "../../lib/services/event-service";
 import { subscribeAllEvents } from "../../lib/admin-events-data";
 import { computeEventStatus, FILTER_STATUSES } from "../../lib/events-shared";
@@ -109,7 +110,7 @@ export default function EventManagement() {
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
-  const [tab, setTab] = useState("List");
+  const [tab, setTab] = useState("Table");
   const [form, setForm] = useState(blankForm);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -306,12 +307,42 @@ export default function EventManagement() {
       </div>
 
       <div className="flex gap-2">
-        {["List", "Calendar"].map((item) => (
+        {["Table", "List", "Calendar"].map((item) => (
           <button key={item} type="button" onClick={() => setTab(item)} className={`rounded-full px-4 py-2 text-xs font-bold transition ${tab === item ? "bg-primary text-white" : "bg-page text-muted hover:bg-active hover:text-primary"}`}>{item}</button>
         ))}
       </div>
 
-      {tab === "Calendar" ? (
+      {tab === "Table" ? (
+        <section className="rounded-3xl border border-border-subtle bg-white p-5 shadow-sm md:p-6">
+          <DataTable
+            title="events"
+            name="events"
+            columns={[
+              { key: "name", header: "Event", sortable: true, accessor: (e) => e.name || "", render: (e) => <b className="text-ink">{e.name}</b> },
+              { key: "type", header: "Type", sortable: true, filter: {}, accessor: (e) => e.type || "" },
+              { key: "eventDate", header: "Date", sortable: true, accessor: (e) => e.eventDate || "", render: (e) => <span className="text-xs">{e.eventDate || "—"}{e.startTime ? ` · ${e.startTime}${e.endTime ? `–${e.endTime}` : ""}` : ""}</span>, exportValue: (e) => e.eventDate || "" },
+              { key: "location", header: "Location", accessor: (e) => e.location || "" },
+              { key: "participantCount", header: "Registered", align: "right", sortable: true, accessor: (e) => e.participantCount ?? 0, render: (e) => `${e.participantCount ?? 0}${e.maxParticipants != null ? ` / ${e.maxParticipants}` : ""}`, exportValue: (e) => e.participantCount ?? 0 },
+              { key: "organizer", header: "Organizer", sortable: true, accessor: (e) => e.organizer || "" },
+              { key: "computedStatus", header: "Status", sortable: true, filter: {}, accessor: (e) => e.computedStatus || "", render: (e) => <TableBadge tone={{ Upcoming: "blue", Ongoing: "green", Completed: "gray", Cancelled: "red", Draft: "orange" }[e.computedStatus] || "gray"}>{e.computedStatus}</TableBadge> },
+              { key: "published", header: "Published", sortable: true, filter: {}, accessor: (e) => (e.published ? "Published" : "Draft") },
+            ]}
+            rows={events}
+            loading={liveLoading}
+            initialSort={{ key: "eventDate", dir: "desc" }}
+            pageSize={10}
+            emptyLabel="No events found."
+            rowActions={(event) => (
+              <>
+                <Link href={`/dashboard/events/${event.id}`} className="rounded-lg bg-info px-2.5 py-1.5 text-[11px] font-bold text-white hover:opacity-90">View</Link>
+                <button type="button" onClick={() => open(event)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-ink hover:bg-page">Edit</button>
+                <button type="button" onClick={() => togglePublish(event)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-info hover:bg-page">{event.published ? "Unpublish" : "Publish"}</button>
+                <button type="button" onClick={() => setConfirmDelete(event)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-primary hover:bg-page">Delete</button>
+              </>
+            )}
+          />
+        </section>
+      ) : tab === "Calendar" ? (
         <section className="rounded-3xl border border-border-subtle bg-white p-5 shadow-sm md:p-6">
           <EventCalendar events={events} onSelectEvent={(event) => open(event)} />
         </section>

@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { doc, onSnapshot } from "firebase/firestore";
-import { subscribeMyAttendance } from "../../../lib/student-data";
-import { attendanceSummary } from "../../../lib/attendance";
 import { useAuth } from "../../../lib/auth-context";
 import { db } from "../../../lib/firebase";
 import StudentManagement from "../../../components/StudentManagement";
@@ -30,7 +28,11 @@ import Shop from "../../../components/shop/Shop";
 import AchievementManagement from "../../../components/achievement/AchievementManagement";
 import StudentAchievements from "../../../components/achievement/StudentAchievements";
 import StudentAttendance from "../../../components/students/StudentAttendance";
+import QrAttendanceScanner from "../../../components/students/QrAttendanceScanner";
+import StudentDashboardHome from "../../../components/students/StudentDashboardHome";
 import AdminQrScanner from "../../../components/attendance/AdminQrScanner";
+import RoomBooking from "../../../components/room-booking/RoomBooking";
+import DocumentsModule from "../../../components/documents/DocumentsModule";
 
 export const roleConfig = {
   Student: {
@@ -40,18 +42,13 @@ export const roleConfig = {
       "My Training",
       "Events",
       "Attendance",
+      "Documents",
       "Achievements",
       "Certificates",
       "My Shop",
       "ID Card",
       "Chat",
       "QR Scanner",
-    ],
-    stats: [
-      ["Active courses", "04", "2 due this week", "ðŸŽ“"],
-      ["Learning streak", "12", "days", "ðŸ”¥"],
-      ["Achievements", "08", "earned", "ðŸ†"],
-      ["Attendance", "96%", "this term", "âœ“"],
     ],
   },
   Volunteer: {
@@ -80,6 +77,7 @@ export const roleConfig = {
       "Students",
       "Events",
       "Attendance",
+      "Documents",
       "Certificates",
       "Chat",
     ],
@@ -114,6 +112,7 @@ export const roleConfig = {
       "Teacher",
       "Training",
       "Event",
+      "Room Booking",
       "Finance",
       "Documents",
       "My Shop",
@@ -134,6 +133,7 @@ export const roleConfig = {
       "Teacher",
       "Training",
       "Event",
+      "Room Booking",
       "Finance",
       "Documents",
       "My Shop",
@@ -210,9 +210,13 @@ function DirectorDashboard({ profile, user }) {
             ) : active === "Training" ? (
               <TrainingManagement role="Director" />
             ) : active === "Teacher" ? (
-              <TeacherAssignment />
+              <TeacherAssignment onNavigate={setActive} />
             ) : active === "Event" ? (
               <EventManagement />
+            ) : active === "Room Booking" ? (
+              <RoomBooking role="Director" />
+            ) : active === "Documents" ? (
+              <DocumentsModule role="Director" />
             ) : active === "Finance" ? (
               <FinanceManagement />
             ) : active === "Contact Inquiries" ? (
@@ -268,19 +272,10 @@ function DashboardContent({ role, profile, user }) {
     "Member";
   const initials = name.slice(0, 2).toUpperCase();
   const newInquiryCount = useNewInquiryCount(role === "Admin");
-  // Real attendance, for the Dashboard home's "Attendance" stat card — the
-  // same data source (and same attendanceSummary() math) the full
-  // Attendance page uses, so the two numbers can never disagree.
-  const [attendanceRecords, setAttendanceRecords] = useState([]);
 
   useEffect(() => {
     if (role === "Teacher") router.replace("/teacher/dashboard");
   }, [role, router]);
-
-  useEffect(() => {
-    if (role !== "Student" || !user?.uid) return undefined;
-    return subscribeMyAttendance(user.uid, setAttendanceRecords, () => {});
-  }, [role, user?.uid]);
 
   useEffect(() => {
     if (role !== "Teacher" || !db || !user?.uid) return undefined;
@@ -311,25 +306,10 @@ function DashboardContent({ role, profile, user }) {
     setActive(module);
   }
 
-  // Real "Attendance" card for Student — every other stat in config.stats
-  // stays exactly as-is (out of scope for this change); only Attendance is
-  // replaced, using the same attendanceSummary() math the full Attendance
-  // page uses so the two can never disagree.
-  const attendanceSummaryForCard = role === "Student" ? attendanceSummary(attendanceRecords) : null;
-  const displayStats = attendanceSummaryForCard
-    ? config.stats.map(([label, value, note, icon]) =>
-        label === "Attendance"
-          ? [
-              label,
-              attendanceSummaryForCard.percent != null ? `${attendanceSummaryForCard.percent}%` : "—",
-              attendanceSummaryForCard.total
-                ? `this term - ${attendanceSummaryForCard.present + attendanceSummaryForCard.late} / ${attendanceSummaryForCard.total} sessions`
-                : "no records yet",
-              icon,
-            ]
-          : [label, value, note, icon],
-      )
-    : config.stats;
+  // Students get the real analytics home (StudentDashboardHome); the
+  // remaining roles that still fall through to the generic dashboard
+  // below render whatever static summary their config defines.
+  const displayStats = config.stats || [];
 
   return (
     <AdminShell
@@ -357,9 +337,13 @@ function DashboardContent({ role, profile, user }) {
             ) : (active === "Training" || active === "My Training") ? (
               <TrainingManagement role={role} />
             ) : role === "Admin" && active === "Teacher" ? (
-              <TeacherAssignment />
+              <TeacherAssignment onNavigate={setActive} />
             ) : role === "Admin" && active === "Event" ? (
               <EventManagement />
+            ) : role === "Admin" && active === "Room Booking" ? (
+              <RoomBooking role="Admin" />
+            ) : active === "Documents" ? (
+              <DocumentsModule role={role} />
             ) : active === "Events" ? (
               <StudentEvents />
             ) : active === "My Shop" ? (
@@ -372,6 +356,17 @@ function DashboardContent({ role, profile, user }) {
               <StudentAchievements uid={user.uid} />
             ) : role === "Student" && active === "Attendance" ? (
               <StudentAttendance />
+            ) : role === "Student" && active === "QR Scanner" ? (
+              <QrAttendanceScanner />
+            ) : role === "Student" && active === "Dashboard" ? (
+              <StudentDashboardHome
+                uid={user.uid}
+                name={name}
+                greeting={config.greeting}
+                modules={config.modules}
+                activeModule={active}
+                onNavigate={selectModule}
+              />
             ) : active === "ID Card" ? (
               <IdCardPrint
                 mode="self"

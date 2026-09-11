@@ -2,10 +2,44 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BookOpen, Eye, Pencil, Search, User, Users } from "lucide-react";
+import { BookOpen, Eye, LayoutGrid, Pencil, Search, Table2, User, Users } from "lucide-react";
 import TrainingForm from "./TrainingForm";
+import DataTable, { StatusBadge } from "../data-table/DataTable";
+import WordImportModal from "../word-import/WordImportModal";
 import { createCourse, loadTraining, updateCourse } from "../../lib/services/training-service";
 import { uploadCourseThumbnail } from "../../lib/teacher-training";
+
+const COURSE_STATUS_TONE = { Active: "green", Upcoming: "blue", Draft: "orange", Completed: "gray", Archived: "gray", Cancelled: "red" };
+
+function TrainingTable({ courses, canManage, onEdit }) {
+  const columns = [
+    { key: "courseCode", header: "Course Code", sortable: true, accessor: (c) => c.courseCode || "", render: (c) => <b className="font-mono text-xs text-ink">{c.courseCode || "—"}</b> },
+    { key: "title", header: "Course", sortable: true, accessor: (c) => c.title || "", render: (c) => <b className="text-ink">{c.title || "Untitled"}</b> },
+    { key: "category", header: "Category", sortable: true, filter: {}, accessor: (c) => c.category || "" },
+    { key: "duration", header: "Duration", accessor: (c) => c.duration || "" },
+    { key: "classCount", header: "Classes", align: "right", sortable: true, accessor: (c) => c.classCount ?? 0 },
+    { key: "enrolled", header: "Students", align: "right", sortable: true, accessor: (c) => c.enrolled ?? 0, render: (c) => <b className="text-ink">{c.enrolled ?? 0}</b> },
+    { key: "teachers", header: "Teachers", accessor: (c) => (c.teachers || []).map((t) => t.displayName || t.email).join(", "), render: (c) => (c.teachers?.length ? (c.teachers.map((t) => t.displayName || t.email).join(", ")) : <span className="text-subtle">Not assigned</span>) },
+    { key: "status", header: "Status", sortable: true, filter: {}, accessor: (c) => c.status || "", render: (c) => <StatusBadge tone={COURSE_STATUS_TONE[c.status] || "gray"}>{c.status || "—"}</StatusBadge> },
+  ];
+  return (
+    <DataTable
+      title="training"
+      name="courses"
+      columns={columns}
+      rows={courses}
+      initialSort={{ key: "title", dir: "asc" }}
+      pageSize={10}
+      emptyLabel="No trainings found."
+      rowActions={(course) => (
+        <>
+          <Link href={`/dashboard/training/${course.id}`} className="rounded-lg bg-info px-2.5 py-1.5 text-[11px] font-bold text-white hover:opacity-90">Open</Link>
+          {canManage && <button type="button" onClick={() => onEdit(course)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-ink hover:bg-page">Edit</button>}
+        </>
+      )}
+    />
+  );
+}
 
 const blank = {
   title: "",
@@ -211,6 +245,8 @@ export default function TrainingManagement({ role }) {
   const [saving, setSaving] = useState(false);
   const [thumbnailFile, setThumbnailFile] = useState(null);
   const [thumbnailPreview, setThumbnailPreview] = useState("");
+  const [viewMode, setViewMode] = useState("table");
+  const [wordOpen, setWordOpen] = useState(false);
   const isTeacher = role === "Teacher";
 
   const load = useCallback(async () => {
@@ -359,30 +395,76 @@ export default function TrainingManagement({ role }) {
   }
 
   return <div className="space-y-6">
-    <section className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-[#f3aaaa] bg-[linear-gradient(120deg,#fff0f0_0%,#fff7f7_45%,#ffffff_100%)] p-6 text-ink shadow-xl"><div><h2 className="text-3xl font-black">Training</h2><p className="mt-2 text-sm text-muted">{isTeacher ? "Your assigned offline classroom trainings." : "Manage offline classroom trainings, teachers, batches, and enrolled students."}</p></div>{data.canManage && <button type="button" onClick={() => open(null)} className="rounded-xl bg-primary px-4 py-3 text-xs font-bold text-white">Add Training</button>}</section>
+    <section className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-[#f3aaaa] bg-[linear-gradient(120deg,#fff0f0_0%,#fff7f7_45%,#ffffff_100%)] p-6 text-ink shadow-xl"><div><h2 className="text-3xl font-black">Training</h2><p className="mt-2 text-sm text-muted">{isTeacher ? "Your assigned offline classroom trainings." : "Manage offline classroom trainings, teachers, batches, and enrolled students."}</p></div>{data.canManage && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setWordOpen(true)} className="rounded-xl border border-border-subtle bg-white px-4 py-3 text-xs font-bold text-ink">Import from Word</button><button type="button" onClick={() => open(null)} className="rounded-xl bg-primary px-4 py-3 text-xs font-bold text-white">Add Training</button></div>}</section>
     {notice && <p className="rounded-xl bg-success-soft p-4 text-sm text-success">{notice}</p>}
     {error && !editing && !adding && <p className="rounded-xl bg-active p-4 text-sm text-primary">{error}</p>}
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[["Total Training", counts.total], ["Active", counts.active], ["Upcoming", counts.upcoming], ["Total Enrolled", counts.enrolled]].map(([label, value]) => <article key={label} className="rounded-2xl border border-border-subtle bg-white p-5 shadow-sm"><p className="text-[10px] font-bold uppercase tracking-wider text-subtle">{label}</p><p className="mt-2 text-2xl font-extrabold">{loading ? "—" : value}</p></article>)}</section>
-    <section className="rounded-3xl border border-border-subtle bg-white p-5 shadow-sm md:p-6"><div className="mb-5 flex flex-wrap gap-3"><label className="relative min-w-56 flex-1"><Search className="absolute left-3 top-2.5 h-4 w-4 text-subtle"/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search training, ID, or teacher" className="w-full rounded-xl border border-border-subtle bg-page py-2 pl-9 pr-3 text-sm"/></label><select value={status} onChange={(event) => setStatus(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 text-sm">{statuses.map((item) => <option key={item}>{item}</option>)}</select>{data.canManage && <select value={teacher} onChange={(event) => setTeacher(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 text-sm"><option value="All">All teachers</option>{data.teachers.map((item) => <option value={item.id} key={item.id}>{item.displayName || item.email || item.id}</option>)}</select>}</div>
-      {loading ? (
-        <p className="py-10 text-center text-sm text-muted">{isTeacher ? "Loading assigned trainings..." : "Loading training..."}</p>
-      ) : courses.length ? (
-        isTeacher ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {courses.map((course) => <TeacherTrainingCard key={course.id} course={course} />)}
-          </div>
+    {!isTeacher && (
+      <div className="flex justify-end">
+        <div className="inline-flex overflow-hidden rounded-xl border border-border-subtle">
+          <button type="button" onClick={() => setViewMode("table")} className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold ${viewMode === "table" ? "bg-success text-white" : "bg-white text-muted"}`}><Table2 className="h-3.5 w-3.5" /> Table</button>
+          <button type="button" onClick={() => setViewMode("cards")} className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold ${viewMode === "cards" ? "bg-success text-white" : "bg-white text-muted"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
+        </div>
+      </div>
+    )}
+
+    {!isTeacher && viewMode === "table" ? (
+      <section className="rounded-3xl border border-border-subtle bg-white p-5 shadow-sm md:p-6">
+        {loading ? <p className="py-10 text-center text-sm text-muted">Loading training...</p> : <TrainingTable courses={data.courses} canManage={data.canManage} onEdit={open} />}
+      </section>
+    ) : (
+      <section className="rounded-3xl border border-border-subtle bg-white p-5 shadow-sm md:p-6"><div className="mb-5 flex flex-wrap gap-3"><label className="relative min-w-56 flex-1"><Search className="absolute left-3 top-2.5 h-4 w-4 text-subtle"/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search training, ID, or teacher" className="w-full rounded-xl border border-border-subtle bg-page py-2 pl-9 pr-3 text-sm"/></label><select value={status} onChange={(event) => setStatus(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 text-sm">{statuses.map((item) => <option key={item}>{item}</option>)}</select>{data.canManage && <select value={teacher} onChange={(event) => setTeacher(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 text-sm"><option value="All">All teachers</option>{data.teachers.map((item) => <option value={item.id} key={item.id}>{item.displayName || item.email || item.id}</option>)}</select>}</div>
+        {loading ? (
+          <p className="py-10 text-center text-sm text-muted">{isTeacher ? "Loading assigned trainings..." : "Loading training..."}</p>
+        ) : courses.length ? (
+          isTeacher ? (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {courses.map((course) => <TeacherTrainingCard key={course.id} course={course} />)}
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {courses.map((course) => (
+                <AdminTrainingCard key={course.id} course={course} canManage={data.canManage} onEdit={open} />
+              ))}
+            </div>
+          )
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {courses.map((course) => (
-              <AdminTrainingCard key={course.id} course={course} canManage={data.canManage} onEdit={open} />
-            ))}
-          </div>
-        )
-      ) : (
-        <p className="py-10 text-center text-sm text-muted">{search || status !== "All" || teacher !== "All" ? "No trainings match your search." : isTeacher ? "No trainings have been assigned to you yet." : "No trainings found."}</p>
-      )}
-    </section>
+          <p className="py-10 text-center text-sm text-muted">{search || status !== "All" || teacher !== "All" ? "No trainings match your search." : isTeacher ? "No trainings have been assigned to you yet." : "No trainings found."}</p>
+        )}
+      </section>
+    )}
     {editing !== null && <Dialog title="Edit Training" close={() => !saving && closeForm()}><TrainingForm course={{ form, setForm, editing }} teachers={data.teachers} saving={saving} onCancel={closeForm} onSubmit={submit} thumbnailPreview={thumbnailPreview || form.thumbnailUrl} onThumbnailSelect={selectThumbnail} onThumbnailRemove={removeThumbnail}/>{error && <p className="mt-3 text-sm text-primary">{error}</p>}</Dialog>}
     {editing === null && adding && <Dialog title="Add Training" close={closeForm}><TrainingForm course={{ form, setForm, editing: null }} teachers={data.teachers} saving={saving} onCancel={closeForm} onSubmit={submit} thumbnailPreview={thumbnailPreview} onThumbnailSelect={selectThumbnail} onThumbnailRemove={removeThumbnail}/>{error && <p className="mt-3 text-sm text-primary">{error}</p>}</Dialog>}
+    <WordImportModal
+      open={wordOpen}
+      onClose={() => setWordOpen(false)}
+      title="Import course from Word"
+      mode="fields"
+      hint="Use labels like “Course Name:”, “Duration:”, “Category:”, “Description:”, “Syllabus:”. The values fill the Add Training form for you to review — nothing is saved until you choose a teacher and click Save."
+      fields={[
+        { key: "title", label: "Course Name", aliases: ["course", "training name", "name", "title"] },
+        { key: "courseCode", label: "Course Code", aliases: ["code", "training code"] },
+        { key: "duration", label: "Duration", aliases: ["length"] },
+        { key: "category", label: "Category", aliases: ["type"] },
+        { key: "level", label: "Level" },
+        { key: "description", label: "Description", aliases: ["about", "overview"], multiline: true },
+        { key: "syllabus", label: "Syllabus", aliases: ["outline", "modules", "curriculum"], multiline: true },
+      ]}
+      onConfirm={async (values) => {
+        setWordOpen(false);
+        setEditing(null);
+        setAdding(true);
+        setForm({
+          ...blank,
+          title: values.title || "",
+          category: values.category || "",
+          duration: values.duration || "",
+          level: ["Beginner", "Intermediate", "Advanced"].includes(values.level) ? values.level : "",
+          description: [values.description || "", values.syllabus ? `\n\nSyllabus:\n${values.syllabus}` : ""].filter(Boolean).join(""),
+        });
+        selectThumbnail(null);
+        setError("");
+      }}
+    />
   </div>;
 }

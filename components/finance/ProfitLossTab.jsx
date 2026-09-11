@@ -91,7 +91,7 @@ export default function ProfitLossTab() {
             <div className="rounded-2xl bg-page p-5 text-center">
               <p className="text-[10px] font-bold uppercase tracking-wider text-subtle">Revenue / Income</p>
               <p className="mt-2 text-2xl font-extrabold text-success">{formatMoney(income)}</p>
-              <p className="mt-1 text-[10px] text-subtle">Actual collected student payments</p>
+              <p className="mt-1 text-[10px] text-subtle">Collected student payments + recorded income</p>
             </div>
             <div className="rounded-2xl bg-page p-5 text-center">
               <p className="text-[10px] font-bold uppercase tracking-wider text-subtle">Expenses</p>

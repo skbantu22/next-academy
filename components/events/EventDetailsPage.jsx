@@ -15,6 +15,7 @@ import {
 import { loadMyParticipation } from "../../lib/events-client";
 import { loadUsers } from "../../lib/services/user-service";
 import { computeEventStatus, isRegistrationOpen } from "../../lib/events-shared";
+import { useConfirm } from "../ui/ConfirmDialog";
 
 const managerModules = ["Dashboard", "Students", "Teacher", "Training", "Event", "Finance", "Documents", "My Shop", "User", "Chat", "Achievement", "ID Card", "Scan QR Code"];
 
@@ -49,6 +50,7 @@ function downloadCsv(filename, rows, headers) {
 }
 
 function ParticipantsTab({ eventId, canManage, staff, onNotice }) {
+  const confirm = useConfirm();
   const [participants, setParticipants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -80,7 +82,7 @@ function ParticipantsTab({ eventId, canManage, staff, onNotice }) {
     }
   }
   async function remove(userId) {
-    if (!window.confirm("Remove this participant's registration?")) return;
+    if (!(await confirm({ title: "Remove participant", message: "Remove this participant's registration?", tone: "danger", confirmLabel: "Remove" }))) return;
     try {
       await removeEventParticipant(eventId, userId);
       onNotice("Participant removed.");
@@ -250,6 +252,7 @@ function AttendanceTab({ eventId, onNotice }) {
 
 export default function EventDetailsPage() {
   const { user, profile, loading: authLoading, logout } = useAuth();
+  const confirm = useConfirm();
   const { eventId } = useParams();
   const router = useRouter();
   const [tab, setTab] = useState("Overview");
@@ -320,7 +323,7 @@ export default function EventDetailsPage() {
     }
   }
   async function cancelRegistration() {
-    if (!window.confirm("Cancel your registration for this event?")) return;
+    if (!(await confirm({ title: "Cancel registration", message: "Cancel your registration for this event?", tone: "danger", confirmLabel: "Cancel registration", cancelLabel: "Keep it" }))) return;
     setRegistering(true);
     try {
       await cancelEventRegistration(eventId);

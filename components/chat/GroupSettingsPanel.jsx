@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import { loadChatDirectory, uploadGroupPhoto } from "../../lib/chat-directory";
 import { addGroupMembers, leaveGroup, removeGroupMember, renameGroup, updateGroupDescription, updateGroupPhoto } from "../../lib/chat-data";
+import { useConfirm } from "../ui/ConfirmDialog";
 
 function initials(name) {
   return (name || "?").trim().slice(0, 2).toUpperCase();
@@ -15,6 +16,7 @@ function initials(name) {
 // denied server-side. "Leave Group" is always available to any member.
 export default function GroupSettingsPanel({ conversation, currentUserId, onClose, onLeave, onNotice }) {
   const isAdmin = (conversation.groupAdminIds || []).includes(currentUserId);
+  const confirm = useConfirm();
   const [name, setName] = useState(conversation.groupName || "");
   const [description, setDescription] = useState(conversation.groupDescription || "");
   const [photoPreview, setPhotoPreview] = useState(conversation.groupPhoto || "");
@@ -89,7 +91,7 @@ export default function GroupSettingsPanel({ conversation, currentUserId, onClos
     }
   }
   async function remove(memberUid) {
-    if (!window.confirm("Remove this member from the group?")) return;
+    if (!(await confirm({ title: "Remove member", message: "Remove this member from the group?", tone: "danger", confirmLabel: "Remove" }))) return;
     try {
       await removeGroupMember(conversation, memberUid);
       onNotice("Member removed.");
@@ -98,7 +100,7 @@ export default function GroupSettingsPanel({ conversation, currentUserId, onClos
     }
   }
   async function leave() {
-    if (!window.confirm("Leave this group?")) return;
+    if (!(await confirm({ title: "Leave group", message: "Leave this group? You'll stop receiving its messages.", tone: "danger", confirmLabel: "Leave" }))) return;
     try {
       await leaveGroup(conversation, currentUserId);
       onLeave();

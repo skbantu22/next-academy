@@ -17,6 +17,8 @@ import {
   updateGroupPhoto,
 } from "../../lib/chat-data";
 import { chatMediaErrorMessage, readMediaDuration, uploadChatMedia, validateChatFile } from "../../lib/chat-media";
+import { hideFloatingAssistant } from "../../lib/fab-visibility";
+import { useConfirm } from "../ui/ConfirmDialog";
 import { uploadGroupPhoto } from "../../lib/chat-directory";
 import { useAudioRecorder } from "../../lib/useAudioRecorder";
 import MessageBubble from "./MessageBubble";
@@ -77,6 +79,12 @@ export default function ChatWorkspace({ currentUserId, currentUserRole, currentU
   const [confirmDelete, setConfirmDelete] = useState(null);
   const bottomRef = useRef(null);
   const recorder = useAudioRecorder();
+  const confirm = useConfirm();
+
+  // Step the floating AI assistant FAB aside while Chat is open — its
+  // fixed bottom-right position otherwise sits on top of the composer's
+  // send button.
+  useEffect(() => hideFloatingAssistant(), []);
 
   useEffect(() => {
     if (!currentUserId) return undefined;
@@ -275,7 +283,7 @@ export default function ChatWorkspace({ currentUserId, currentUserRole, currentU
     document.getElementById(`msg-${messageId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
   async function handleDelete(item) {
-    if (!window.confirm("Delete this message?")) return;
+    if (!(await confirm({ title: "Delete message", message: "Delete this message? This cannot be undone.", tone: "danger", confirmLabel: "Delete" }))) return;
     try {
       await deleteMessage(selected, item.id, item.storagePath);
     } catch (err) {
@@ -296,7 +304,7 @@ export default function ChatWorkspace({ currentUserId, currentUserRole, currentU
     }
   }
   async function handleLeaveFromMenu(item) {
-    if (!window.confirm("Leave this group?")) return;
+    if (!(await confirm({ title: "Leave group", message: "Leave this group? You'll stop receiving its messages.", tone: "danger", confirmLabel: "Leave" }))) return;
     try {
       await leaveGroup(item, currentUserId);
       if (selected === item.id) setSelected("");

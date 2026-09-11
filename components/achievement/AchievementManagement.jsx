@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Award, BadgeCheck, FileCheck2, LayoutTemplate, ShieldCheck } from "lucide-react";
 import StatCard from "../finance/StatCard";
+import DataTable, { StatusBadge } from "../data-table/DataTable";
 import {
   createTemplate,
   deleteTemplate,
@@ -14,6 +15,8 @@ import {
   uploadTemplateBackground,
 } from "../../lib/achievement-data";
 import { CERTIFICATE_TYPES } from "../../lib/achievement-shared";
+import { useToast } from "../ui/Toast";
+import { useConfirm } from "../ui/ConfirmDialog";
 // (ACHIEVEMENT_TYPES also lives in achievement-shared.js — used by
 // TeacherWorkspacePage.js's Award-achievement form.)
 
@@ -118,6 +121,8 @@ export default function AchievementManagement() {
 const blankTemplate = { name: "", description: "", templateCode: "", type: CERTIFICATE_TYPES[0] };
 
 function TemplatesTab({ templates, onChanged }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(blankTemplate);
   const [file, setFile] = useState(null);
@@ -182,14 +187,18 @@ function TemplatesTab({ templates, onChanged }) {
     });
     onChanged();
   }
-  async function remove(template) {
-    if (!window.confirm(`Delete template "${template.name}"?`)) return;
-    try {
-      await deleteTemplate(template.id);
-      onChanged();
-    } catch (error) {
-      window.alert(error.message || "Unable to delete this template.");
-    }
+  function remove(template) {
+    return confirm({
+      title: "Delete template",
+      message: `Delete template "${template.name}"? This cannot be undone.`,
+      tone: "danger",
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        await deleteTemplate(template.id);
+        toast.success("Template deleted successfully");
+        onChanged();
+      },
+    });
   }
 
   return (
@@ -281,36 +290,49 @@ function TemplatesTab({ templates, onChanged }) {
   );
 }
 
+const certIssueDate = (cert) => cert.issueDate?.toDate?.().toLocaleDateString?.() || cert.metadata?.completionDate || "";
+
 function CertificatesTab({ certificates, onChanged }) {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
+  const toast = useToast();
+  const confirm = useConfirm();
   const [busyId, setBusyId] = useState("");
 
-  const filtered = certificates.filter((cert) => {
-    if (statusFilter !== "All" && (cert.status || "active") !== statusFilter.toLowerCase()) return false;
-    const haystack = `${cert.studentName} ${cert.studentUserId} ${cert.courseName} ${cert.certificateCode}`.toLowerCase();
-    return haystack.includes(search.trim().toLowerCase());
-  });
+  const columns = [
+    { key: "studentName", header: "Student", sortable: true, accessor: (c) => `${c.studentName || ""} ${c.studentUserId || ""}`, render: (c) => <span><b className="block text-ink">{c.studentName || "—"}</b><span className="text-[11px] text-subtle">{c.studentUserId}</span></span>, exportValue: (c) => c.studentName || "" },
+    { key: "courseName", header: "Course", sortable: true, filter: {}, accessor: (c) => c.courseName || "" },
+    { key: "type", header: "Type", sortable: true, filter: {}, accessor: (c) => c.type || "" },
+    { key: "templateName", header: "Template", accessor: (c) => c.templateName || "" },
+    { key: "certificateCode", header: "Certificate ID", accessor: (c) => c.certificateCode || c.id, render: (c) => <span className="font-mono text-[11px]">{c.certificateCode || c.id}</span> },
+    { key: "issueDate", header: "Issue Date", sortable: true, accessor: (c) => certIssueDate(c), render: (c) => <span className="text-xs">{certIssueDate(c) || "—"}</span> },
+    { key: "status", header: "Status", sortable: true, filter: {}, accessor: (c) => (c.status === "revoked" ? "Revoked" : "Active"), render: (c) => <StatusBadge tone={c.status === "revoked" ? "red" : "green"}>{c.status === "revoked" ? "Revoked" : "Active"}</StatusBadge> },
+  ];
 
-  async function revoke(cert) {
-    if (!window.confirm(`Revoke certificate ${cert.certificateCode || cert.id}? It will no longer verify as valid.`)) return;
-    setBusyId(cert.id);
-    try {
-      await revokeGeneratedCertificate(cert.id);
-      onChanged();
-    } catch (error) {
-      window.alert(error.message || "Unable to revoke this certificate.");
-    } finally {
-      setBusyId("");
-    }
+  function revoke(cert) {
+    return confirm({
+      title: "Revoke certificate",
+      message: `Revoke certificate ${cert.certificateCode || cert.id}? It will no longer verify as valid.`,
+      tone: "danger",
+      confirmLabel: "Revoke",
+      onConfirm: async () => {
+        setBusyId(cert.id);
+        try {
+          await revokeGeneratedCertificate(cert.id);
+          toast.success("Certificate revoked successfully");
+          onChanged();
+        } finally {
+          setBusyId("");
+        }
+      },
+    });
   }
   async function reissue(cert) {
     setBusyId(cert.id);
     try {
       await reissueGeneratedCertificate(cert.id);
+      toast.success("Certificate reissued successfully");
       onChanged();
     } catch (error) {
-      window.alert(error.message || "Unable to reissue this certificate.");
+      toast.error(error.message || "Unable to reissue this certificate.");
     } finally {
       setBusyId("");
     }
@@ -318,62 +340,26 @@ function CertificatesTab({ certificates, onChanged }) {
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search student, ID, course, certificate code..." className="min-w-[240px] flex-1 rounded-xl border border-border-subtle px-3 py-2 text-sm" />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 text-sm">
-          {["All", "Active", "Revoked"].map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-      </div>
-      <div className="overflow-x-auto rounded-2xl border border-border-subtle bg-white shadow-sm">
-        <table className="w-full min-w-[900px] text-left text-xs">
-          <thead className="bg-page text-[10px] font-bold uppercase tracking-wider text-subtle">
-            <tr>
-              <th className="p-3">Student</th>
-              <th className="p-3">Course</th>
-              <th className="p-3">Type</th>
-              <th className="p-3">Template</th>
-              <th className="p-3">Certificate ID</th>
-              <th className="p-3">Issue Date</th>
-              <th className="p-3">Status</th>
-              <th className="p-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((cert) => (
-              <tr key={cert.id} className="border-t border-border-subtle">
-                <td className="p-3">
-                  <b className="block text-ink">{cert.studentName || "—"}</b>
-                  <span className="text-subtle">{cert.studentUserId}</span>
-                </td>
-                <td className="p-3">{cert.courseName || "—"}</td>
-                <td className="p-3">{cert.type || "—"}</td>
-                <td className="p-3">{cert.templateName || "—"}</td>
-                <td className="p-3 font-mono">{cert.certificateCode || cert.id}</td>
-                <td className="p-3">{cert.issueDate?.toDate?.().toLocaleDateString?.() || cert.metadata?.completionDate || "—"}</td>
-                <td className="p-3">
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${cert.status === "revoked" ? "bg-active text-primary" : "bg-success-soft text-success"}`}>
-                    {cert.status === "revoked" ? "Revoked" : "Active"}
-                  </span>
-                </td>
-                <td className="p-3">
-                  <div className="flex flex-wrap gap-2">
-                    <a href={`/api/certificates/${cert.id}/pdf`} target="_blank" rel="noreferrer" className="rounded-lg border border-border-subtle px-2 py-1 font-bold text-ink hover:bg-active">View</a>
-                    <a href={`/verify/${encodeURIComponent(cert.certificateCode || cert.id)}`} target="_blank" rel="noreferrer" className="rounded-lg border border-border-subtle px-2 py-1 font-bold text-ink hover:bg-active">Verify</a>
-                    {cert.status !== "revoked" ? (
-                      <button disabled={busyId === cert.id} onClick={() => revoke(cert)} className="rounded-lg border border-border-subtle px-2 py-1 font-bold text-primary hover:bg-active disabled:opacity-50">Revoke</button>
-                    ) : (
-                      <button disabled={busyId === cert.id} onClick={() => reissue(cert)} className="rounded-lg border border-border-subtle px-2 py-1 font-bold text-ink hover:bg-active disabled:opacity-50">Reissue</button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {!filtered.length && (
-              <tr><td colSpan={8} className="p-6 text-center text-muted">No certificates match these filters.</td></tr>
+      <DataTable
+        title="certificates"
+        name="certificates"
+        columns={columns}
+        rows={certificates}
+        initialSort={{ key: "issueDate", dir: "desc" }}
+        pageSize={10}
+        emptyLabel="No certificates issued yet."
+        rowActions={(cert) => (
+          <>
+            <a href={`/api/certificates/${cert.id}/pdf`} target="_blank" rel="noreferrer" className="rounded-lg bg-info px-2.5 py-1.5 text-[11px] font-bold text-white hover:opacity-90">View</a>
+            <a href={`/verify/${encodeURIComponent(cert.certificateCode || cert.id)}`} target="_blank" rel="noreferrer" className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-ink hover:bg-page">Verify</a>
+            {cert.status !== "revoked" ? (
+              <button type="button" disabled={busyId === cert.id} onClick={() => revoke(cert)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-primary hover:bg-page disabled:opacity-50">Revoke</button>
+            ) : (
+              <button type="button" disabled={busyId === cert.id} onClick={() => reissue(cert)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-ink hover:bg-page disabled:opacity-50">Reissue</button>
             )}
-          </tbody>
-        </table>
-      </div>
+          </>
+        )}
+      />
     </section>
   );
 }
@@ -382,18 +368,18 @@ function AchievementsTab({ certificates }) {
   // Achievements are the underlying "award" every issued certificate is
   // linked to (see certificate-core.js) — this view gives the admin the
   // same list from the achievement angle without a second data source.
+  const columns = [
+    { key: "studentName", header: "Student", sortable: true, accessor: (c) => c.studentName || c.studentId || "", render: (c) => <b className="text-ink">{c.studentName || c.studentId}</b> },
+    { key: "title", header: "Achievement", sortable: true, accessor: (c) => c.title || c.type || "" },
+    { key: "type", header: "Type", sortable: true, filter: {}, accessor: (c) => c.type || "" },
+    { key: "courseName", header: "Course", sortable: true, filter: {}, accessor: (c) => c.courseName || "" },
+    { key: "issueDate", header: "Issued", sortable: true, accessor: (c) => certIssueDate(c), render: (c) => <span className="text-xs">{certIssueDate(c) || "—"}</span> },
+    { key: "status", header: "Status", sortable: true, filter: {}, accessor: (c) => (c.status === "revoked" ? "Revoked" : "Active"), render: (c) => <StatusBadge tone={c.status === "revoked" ? "red" : "green"}>{c.status === "revoked" ? "Revoked" : "Active"}</StatusBadge> },
+  ];
   return (
-    <section className="rounded-2xl border border-border-subtle bg-white p-5 shadow-sm">
-      <h3 className="mb-3 text-sm font-bold text-ink">Certificates issued (linked achievements)</h3>
-      <div className="space-y-2">
-        {certificates.map((cert) => (
-          <div key={cert.id} className="flex items-center justify-between border-b border-border-subtle py-2 text-xs last:border-0">
-            <span><b className="text-ink">{cert.studentName || cert.studentId}</b> — {cert.title || cert.type}</span>
-            <span className="text-subtle">{cert.type}</span>
-          </div>
-        ))}
-        {!certificates.length && <p className="text-sm text-muted">No achievements recorded yet.</p>}
-      </div>
+    <section className="space-y-3">
+      <h3 className="text-sm font-bold text-ink">Certificates issued (linked achievements)</h3>
+      <DataTable title="achievements" name="achievements" columns={columns} rows={certificates} initialSort={{ key: "issueDate", dir: "desc" }} pageSize={10} emptyLabel="No achievements recorded yet." />
     </section>
   );
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { loadFinanceOverview } from "../../lib/services/finance-service";
 import { formatDate, formatMoney } from "../training/PaymentHistoryTable";
+import ExportMenu from "../data-table/ExportMenu";
 
 const reportTypes = [
   "Income Report",
@@ -53,6 +54,13 @@ export default function ReportsTab() {
   const payments = useMemo(() => overview?.payments || [], [overview]);
   const expenses = useMemo(() => overview?.expenses || [], [overview]);
   const admissions = useMemo(() => overview?.admissions || [], [overview]);
+  // Realised manual income (Finance → Income) — folded into the monthly
+  // income/net figures only; the by-student and by-course reports below
+  // stay tuition-payment specific (a donation has no student or course).
+  const manualIncome = useMemo(
+    () => (overview?.income || []).filter((item) => (item.status || "Paid") !== "Pending"),
+    [overview],
+  );
 
   const studentSummary = useMemo(() => {
     const paidMap = groupSum(payments, (p) => p.studentId, (p) => p.amount);
@@ -77,6 +85,8 @@ export default function ReportsTab() {
   const monthlySummary = useMemo(() => {
     const monthKey = (dateStr) => (dateStr || "").slice(0, 7) || "Unknown";
     const incomeMap = groupSum(payments, (p) => monthKey(p.paymentDate), (p) => p.amount);
+    const manualMap = groupSum(manualIncome, (i) => monthKey(i.date), (i) => i.amount);
+    manualMap.forEach((value, month) => incomeMap.set(month, (incomeMap.get(month) || 0) + value));
     const expenseMap = groupSum(expenses, (e) => monthKey(e.expenseDate), (e) => e.amount);
     const months = [...new Set([...incomeMap.keys(), ...expenseMap.keys()])].sort().reverse();
     return months.map((month) => {
@@ -84,7 +94,70 @@ export default function ReportsTab() {
       const expense = expenseMap.get(month) || 0;
       return { month, income, expense, net: income - expense };
     });
-  }, [payments, expenses]);
+  }, [payments, manualIncome, expenses]);
+
+  // Each tabular report's rows + columns, so one Export control can serve
+  // whichever report is on screen (all derived from the same overview
+  // payload — no extra fetch).
+  const exportConfig = useMemo(() => ({
+    "Income Report": {
+      rows: payments,
+      columns: [
+        { key: "d", exportHeader: "Date", accessor: (p) => p.paymentDate || "" },
+        { key: "s", exportHeader: "Student", accessor: (p) => p.studentName || "" },
+        { key: "t", exportHeader: "Training", accessor: (p) => p.courseTitle || "" },
+        { key: "a", exportHeader: "Amount", accessor: (p) => Number(p.amount || 0) },
+        { key: "m", exportHeader: "Method", accessor: (p) => p.paymentMethod || "" },
+      ],
+    },
+    "Expense Report": {
+      rows: expenses,
+      columns: [
+        { key: "d", exportHeader: "Date", accessor: (e) => e.expenseDate || "" },
+        { key: "c", exportHeader: "Category", accessor: (e) => e.category || "" },
+        { key: "a", exportHeader: "Amount", accessor: (e) => Number(e.amount || 0) },
+        { key: "m", exportHeader: "Method", accessor: (e) => e.paymentMethod || "" },
+        { key: "x", exportHeader: "Description", accessor: (e) => e.description || "" },
+      ],
+    },
+    "Outstanding Due Report": {
+      rows: admissions.filter((a) => a.dueAmount > 0),
+      columns: [
+        { key: "s", exportHeader: "Student", accessor: (a) => a.studentName || "" },
+        { key: "t", exportHeader: "Training", accessor: (a) => a.courseTitle || "" },
+        { key: "f", exportHeader: "Final Fee", accessor: (a) => Number(a.finalFee || 0) },
+        { key: "p", exportHeader: "Paid", accessor: (a) => Number(a.totalPaid || 0) },
+        { key: "due", exportHeader: "Due", accessor: (a) => Number(a.dueAmount || 0) },
+        { key: "st", exportHeader: "Status", accessor: (a) => a.paymentStatus || "" },
+      ],
+    },
+    "Student Payment Report": {
+      rows: studentSummary,
+      columns: [
+        { key: "s", exportHeader: "Student", accessor: (r) => r.studentName || "" },
+        { key: "u", exportHeader: "User ID", accessor: (r) => r.userId || "" },
+        { key: "t", exportHeader: "Total Paid", accessor: (r) => Number(r.total || 0) },
+      ],
+    },
+    "Training Revenue Report": {
+      rows: trainingSummary,
+      columns: [
+        { key: "t", exportHeader: "Training", accessor: (r) => r.courseTitle || "" },
+        { key: "c", exportHeader: "Training ID", accessor: (r) => r.courseCode || "" },
+        { key: "r", exportHeader: "Total Revenue", accessor: (r) => Number(r.total || 0) },
+      ],
+    },
+    "Monthly Financial Report": {
+      rows: monthlySummary,
+      columns: [
+        { key: "m", exportHeader: "Month", accessor: (r) => r.month },
+        { key: "i", exportHeader: "Income", accessor: (r) => Number(r.income || 0) },
+        { key: "e", exportHeader: "Expense", accessor: (r) => Number(r.expense || 0) },
+        { key: "n", exportHeader: "Net", accessor: (r) => Number(r.net || 0) },
+      ],
+    },
+  }), [payments, expenses, admissions, studentSummary, trainingSummary, monthlySummary]);
+  const currentExport = exportConfig[reportType];
 
   return (
     <div className="space-y-6">
@@ -96,6 +169,11 @@ export default function ReportsTab() {
           <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 text-sm" />
           <span className="text-xs text-subtle">to</span>
           <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="rounded-xl border border-border-subtle px-3 py-2 text-sm" />
+          {currentExport && (
+            <div className="ml-auto">
+              <ExportMenu name={reportType.replace(/\s+/g, "-").toLowerCase()} columns={currentExport.columns} pageRows={currentExport.rows} filteredRows={currentExport.rows} allRows={currentExport.rows} />
+            </div>
+          )}
         </div>
 
         {error && <p className="mb-3 rounded-xl bg-active p-3 text-xs text-primary">{error}</p>}

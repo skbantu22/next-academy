@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search, UserPlus } from "lucide-react";
 import { attendancePercent } from "../../lib/attendance";
+import DataTable from "../data-table/DataTable";
 import { stopEnterSubmit } from "../../lib/ui/keyboard";
 import { capacityLabel, capacityRemainingLabel, isFull } from "../../lib/enrollment";
 import { enrollStudent, loadEnrollments, unenrollStudent } from "../../lib/services/enrollment-service";
 import { loadTeacherEnrollments, teacherEnrollStudent } from "../../lib/services/teacher-enrollment-service";
 import { collectPayment, loadPaymentHistory } from "../../lib/services/payment-service";
 import PaymentHistoryTable, { PaymentStatusBadge, formatMoney } from "./PaymentHistoryTable";
+import { useConfirm } from "../ui/ConfirmDialog";
 
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : "—");
 const paymentMethods = ["Cash", "Bank Transfer", "Card", "Other"];
@@ -323,10 +325,10 @@ const backends = {
 // provided, an Attendance % column is shown.
 export default function EnrollmentManager({ mode, courseId, courseTitle, courseCode, attendance, classroomInfo }) {
   const backend = backends[mode] || backends.manage;
+  const confirm = useConfirm();
   const [data, setData] = useState({ enrollments: [], allStudents: [], enrolledCount: 0, capacity: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [viewing, setViewing] = useState(null);
   const [collectingFor, setCollectingFor] = useState(null);
@@ -377,9 +379,20 @@ export default function EnrollmentManager({ mode, courseId, courseTitle, courseC
   const capacity = data.capacity;
   const full = isFull(enrolledCount, capacity);
 
-  const filteredRows = rows.filter((row) =>
-    `${row.displayName} ${row.email} ${row.userId}`.toLowerCase().includes(search.trim().toLowerCase()),
-  );
+  const columns = useMemo(() => [
+    { key: "userId", header: "User ID", sortable: true, accessor: (r) => r.userId || "", render: (r) => <span className="font-mono text-xs">{r.userId}</span> },
+    { key: "displayName", header: "Name", sortable: true, accessor: (r) => r.displayName || "", render: (r) => <b className="text-ink">{r.displayName || "Unnamed student"}</b> },
+    { key: "email", header: "Email", sortable: true, accessor: (r) => r.email || "" },
+    { key: "phone", header: "Phone", accessor: (r) => r.phone || "" },
+    { key: "enrolledAt", header: "Enrollment Date", sortable: true, accessor: (r) => r.enrolledAt || "", exportValue: (r) => formatDate(r.enrolledAt), render: (r) => <span className="text-xs text-muted">{formatDate(r.enrolledAt)}</span> },
+    ...(attendance ? [{ key: "attendance", header: "Attendance", align: "right", sortable: true, accessor: (r) => r.attendance ?? -1, render: (r) => (r.attendance == null ? "—" : `${r.attendance}%`) }] : []),
+    ...(backend.canManagePayments ? [
+      { key: "finalFee", header: "Total Fee", align: "right", sortable: true, accessor: (r) => Number(r.finalFee || 0), render: (r) => <b className="text-ink">{formatMoney(r.finalFee)}</b>, exportValue: (r) => Number(r.finalFee || 0) },
+      { key: "totalPaid", header: "Paid", align: "right", sortable: true, accessor: (r) => Number(r.totalPaid || 0), render: (r) => <b className="text-success">{formatMoney(r.totalPaid)}</b>, exportValue: (r) => Number(r.totalPaid || 0) },
+      { key: "dueAmount", header: "Due", align: "right", sortable: true, accessor: (r) => Number(r.dueAmount || 0), render: (r) => <b className="text-primary">{formatMoney(r.dueAmount)}</b>, exportValue: (r) => Number(r.dueAmount || 0) },
+      { key: "paymentStatus", header: "Payment Status", sortable: true, filter: {}, accessor: (r) => r.paymentStatus || "", render: (r) => <PaymentStatusBadge value={r.paymentStatus} /> },
+    ] : []),
+  ], [attendance, backend.canManagePayments]);
 
   async function handleEnroll(studentId) {
     await backend.enroll(courseId, studentId);
@@ -388,7 +401,12 @@ export default function EnrollmentManager({ mode, courseId, courseTitle, courseC
     load();
   }
   async function handleRemove(row) {
-    if (!window.confirm(`Remove ${row.displayName || "this student"} from this training?`)) return;
+    if (!(await confirm({
+      title: "Remove student",
+      message: `Remove ${row.displayName || "this student"} from this training?`,
+      tone: "danger",
+      confirmLabel: "Remove",
+    }))) return;
     setMessage("");
     try {
       await unenrollStudent(courseId, row.studentId);
@@ -417,18 +435,7 @@ export default function EnrollmentManager({ mode, courseId, courseTitle, courseC
 
       <CapacityBar enrolledCount={enrolledCount} capacity={capacity} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="relative min-w-56 flex-1">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-subtle" />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            onKeyDown={stopEnterSubmit}
-            placeholder="Search by name, student ID, or email"
-            className="w-full rounded-xl border border-border-subtle bg-page py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary"
-          />
-        </label>
+      <div className="flex justify-end">
         <button
           type="button"
           onClick={() => setModalOpen(true)}
@@ -443,63 +450,24 @@ export default function EnrollmentManager({ mode, courseId, courseTitle, courseC
       {message && <p className="rounded-xl bg-success-soft p-3 text-xs text-success">{message}</p>}
       {error && <p className="rounded-xl bg-active p-3 text-xs text-primary">{error}</p>}
 
-      {loading ? (
-        <p className="py-8 text-center text-sm text-muted">Loading enrolled students...</p>
-      ) : filteredRows.length ? (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="border-b text-[10px] uppercase tracking-wider text-subtle">
-              <tr>
-                {[
-                  "User ID",
-                  "Name",
-                  "Email",
-                  "Phone",
-                  "Enrollment Date",
-                  ...(attendance ? ["Attendance"] : []),
-                  ...(backend.canManagePayments ? ["Total Fee", "Paid", "Due", "Payment Status"] : []),
-                  "Status",
-                  "Actions",
-                ].map((label) => (
-                  <th key={label} className="p-3">{label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.map((row) => (
-                <tr key={row.studentId} className="border-b border-border-subtle">
-                  <td className="p-3 font-mono text-xs">{row.userId}</td>
-                  <td className="p-3"><b>{row.displayName || "Unnamed student"}</b></td>
-                  <td className="p-3 text-xs text-muted">{row.email}</td>
-                  <td className="p-3 text-xs text-muted">{row.phone || "—"}</td>
-                  <td className="p-3 text-xs text-muted">{formatDate(row.enrolledAt)}</td>
-                  {attendance && <td className="p-3 text-xs">{row.attendance == null ? "—" : `${row.attendance}%`}</td>}
-                  {backend.canManagePayments && (
-                    <>
-                      <td className="p-3 text-xs font-bold text-ink">{formatMoney(row.finalFee)}</td>
-                      <td className="p-3 text-xs font-bold text-success">{formatMoney(row.totalPaid)}</td>
-                      <td className="p-3 text-xs font-bold text-primary">{formatMoney(row.dueAmount)}</td>
-                      <td className="p-3"><PaymentStatusBadge value={row.paymentStatus} /></td>
-                    </>
-                  )}
-                  <td className="p-3"><span className="rounded-full bg-success-soft px-2.5 py-1 text-[10px] font-bold text-success">Active</span></td>
-                  <td className="space-x-3 p-3 text-xs font-bold">
-                    <button type="button" onClick={() => setViewing(row)} className="text-muted">View</button>
-                    {backend.canManagePayments && (
-                      <button type="button" onClick={() => setCollectingFor(row)} className="text-primary">Collect Payment</button>
-                    )}
-                    {backend.canRemove && (
-                      <button type="button" onClick={() => handleRemove(row)} className="text-primary">Remove</button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="py-8 text-center text-sm text-muted">No students enrolled yet.</p>
-      )}
+      <DataTable
+        title="enrolled students"
+        name={`enrollments-${courseCode || courseId || ""}`}
+        columns={columns}
+        rows={rows}
+        loading={loading}
+        getRowId={(r) => r.studentId}
+        initialSort={{ key: "enrolledAt", dir: "desc" }}
+        pageSize={10}
+        emptyLabel="No students enrolled yet."
+        rowActions={(row) => (
+          <>
+            <button type="button" onClick={() => setViewing(row)} className="rounded-lg bg-info px-2.5 py-1.5 text-[11px] font-bold text-white hover:opacity-90">View</button>
+            {backend.canManagePayments && <button type="button" onClick={() => setCollectingFor(row)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-primary hover:bg-page">Collect Payment</button>}
+            {backend.canRemove && <button type="button" onClick={() => handleRemove(row)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-primary hover:bg-page">Remove</button>}
+          </>
+        )}
+      />
 
       {modalOpen && (
         <EnrollStudentModal
