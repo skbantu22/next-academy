@@ -153,3 +153,54 @@ export async function PATCH(request) {
     return failure("role update", error);
   }
 }
+
+// Deletes the account itself (Firebase Auth user + the users/{uid} profile
+// doc) — the same two places createStudent/createUser etc. create on
+// signup. Deliberately does NOT cascade-delete this person's historical
+// records (enrollments, submissions, attendance, certificates, ...): those
+// stay as real academic/audit history, exactly like a "Rejected" or
+// deactivated account already leaves its trail untouched elsewhere in this
+// app. Same safety rules as PATCH above (no self-action, only a Director
+// may touch a Director, never the last remaining Director).
+export async function DELETE(request) {
+  try {
+    const access = await requireManager(request);
+    if (access.denied) return access.denied;
+    const { uid } = await request.json();
+    if (typeof uid !== "string" || !uid) {
+      return NextResponse.json({ message: "User ID is required." }, { status: 400 });
+    }
+    if (uid === access.actorUid) {
+      return NextResponse.json({ message: "You cannot delete your own account." }, { status: 400 });
+    }
+
+    const targetRef = access.db.collection("users").doc(uid);
+    const target = await targetRef.get();
+    if (!target.exists) {
+      return NextResponse.json({ message: "User not found." }, { status: 404 });
+    }
+    const currentRole = target.data().role;
+    if (access.actorRole !== "Director" && currentRole === "Director") {
+      return NextResponse.json({ message: "Only a Director can delete another Director's account." }, { status: 403 });
+    }
+    if (currentRole === "Director") {
+      const directors = await access.db.collection("users").where("role", "==", "Director").get();
+      if (directors.size <= 1) {
+        return NextResponse.json({ message: "This is the only Director account and cannot be deleted." }, { status: 400 });
+      }
+    }
+
+    const auth = getAdminAuth();
+    try {
+      await auth.deleteUser(uid);
+    } catch (authError) {
+      // Already gone from Auth (e.g. a retry) — still proceed to remove the
+      // orphaned Firestore doc rather than leaving it stranded.
+      if (authError?.code !== "auth/user-not-found") throw authError;
+    }
+    await targetRef.delete();
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return failure("user deletion", error);
+  }
+}

@@ -29,10 +29,6 @@ export default function AuthPage({ mode = "login" }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const [verification, setVerification] = useState(false);
-  const [verificationEmail, setVerificationEmail] = useState("");
-  const [verificationCode, setVerificationCode] = useState("");
-  const [resendSeconds, setResendSeconds] = useState(0);
   const [resetMode, setResetMode] = useState(false);
 
   useEffect(() => {
@@ -40,27 +36,6 @@ export default function AuthPage({ mode = "login" }) {
       router.replace(`/dashboard/${auth.profile.role.toLowerCase()}`);
     }
   }, [auth.loading, auth.profile?.role, auth.user, router]);
-
-  useEffect(() => {
-    if (!resendSeconds) return undefined;
-    const timer = window.setInterval(() => {
-      setResendSeconds((seconds) => Math.max(0, seconds - 1));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [resendSeconds]);
-
-  async function sendVerificationCode() {
-    const result = await auth.sendVerificationCode();
-    setResendSeconds(result.retryAfterSeconds || 60);
-    setNotice("A 6-digit verification code has been sent to your email.");
-  }
-
-  async function openVerification(user) {
-    setVerificationEmail(user?.email || email);
-    setVerificationCode("");
-    setVerification(true);
-    await sendVerificationCode();
-  }
 
   async function submit(event) {
     event.preventDefault();
@@ -72,11 +47,15 @@ export default function AuthPage({ mode = "login" }) {
         await auth.resetPassword(email);
         setNotice("Password reset email sent. Check your inbox.");
       } else if (mode === "register") {
-        const registeredUser = await auth.register(email, password, name);
-        await openVerification(registeredUser);
+        // register() already sends the Firebase verification link email —
+        // the dedicated /verify-email page is where the user waits for it
+        // and confirms once they've clicked it (see requirements: a real
+        // route, not a popup/modal, and no 6-digit code anywhere).
+        await auth.register(email, password, name);
+        router.push("/verify-email");
       } else {
         const result = await auth.login(email, password);
-        if (result.requiresVerification) await openVerification(result.user);
+        if (result.requiresVerification) router.push("/verify-email");
       }
     } catch {
       // Auth context provides the user-facing message.
@@ -92,37 +71,6 @@ export default function AuthPage({ mode = "login" }) {
       await auth.socialLogin(provider);
     } catch {
       // Auth context provides the user-facing message.
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function resend() {
-    setBusy(true);
-    auth.clearError();
-    try {
-      await sendVerificationCode();
-    } catch (verificationError) {
-      setNotice(verificationError.message);
-      if (verificationError.retryAfterSeconds) {
-        setResendSeconds(verificationError.retryAfterSeconds);
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verifyCode() {
-    setBusy(true);
-    auth.clearError();
-    try {
-      await auth.verifyEmailCode(verificationCode);
-      setNotice("Your email has been verified. Redirecting to your workspace...");
-      if (auth.profile?.role) {
-        router.replace(`/dashboard/${auth.profile.role.toLowerCase()}`);
-      }
-    } catch (verificationError) {
-      setNotice(verificationError.message);
     } finally {
       setBusy(false);
     }
@@ -149,205 +97,141 @@ export default function AuthPage({ mode = "login" }) {
             Your educational & community center
           </p>
         </div>
-        {verification ? (
-          <div className="text-center">
-            <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-red-50 text-2xl text-red-600">
-              ✉
-            </span>
-            <h1 className="mt-5 text-2xl font-bold text-slate-900">
-              Verify your email
-            </h1>
-            <p className="mt-3 text-sm leading-6 text-slate-500">
-              Enter the 6-digit verification code sent to{" "}
-              <strong className="text-slate-800">{verificationEmail}</strong>.
-            </p>
-            <label className="mt-6 block text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
-              Verification code
+        <div className="mb-6 flex rounded-xl bg-slate-100 p-1">
+          <a
+            href="/login"
+            className={`flex-1 rounded-lg py-2 text-center text-sm font-semibold ${mode === "login" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}
+          >
+            Sign In
+          </a>
+          <a
+            href="/register"
+            className={`flex-1 rounded-lg py-2 text-center text-sm font-semibold ${mode === "register" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}
+          >
+            Register
+          </a>
+        </div>
+        <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
+        <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+        {!resetMode && (
+          <div className="mt-6 grid grid-cols-2 gap-3">
+            <button
+              disabled={busy}
+              onClick={() => social("google")}
+              className="h-11 rounded-xl border border-slate-200 text-xs font-semibold hover:bg-slate-50"
+            >
+              G Google
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => social("facebook")}
+              className="h-11 rounded-xl border border-slate-200 text-xs font-semibold hover:bg-slate-50"
+            >
+              f Facebook
+            </button>
+          </div>
+        )}
+        {!resetMode && (
+          <div className="my-5 flex items-center gap-3 text-[10px] uppercase tracking-wider text-slate-400">
+            <i className="h-px flex-1 bg-slate-200" />
+            or email
+            <i className="h-px flex-1 bg-slate-200" />
+          </div>
+        )}
+        <form onSubmit={submit} className="space-y-4">
+          {mode === "register" && !resetMode && (
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
+              Full name
               <input
-                autoComplete="one-time-code"
-                inputMode="numeric"
-                maxLength={6}
-                onChange={(event) =>
-                  setVerificationCode(event.target.value.replace(/\D/g, ""))
-                }
-                pattern="[0-9]{6}"
-                placeholder="000000"
-                value={verificationCode}
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center font-mono text-lg font-bold tracking-[0.4em] outline-none focus:ring-2 focus:ring-red-500"
+                required
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal outline-none focus:ring-2 focus:ring-red-500"
+                placeholder="Alex Morgan"
               />
             </label>
-            {message && (
-              <p
-                className={`mt-4 text-xs ${auth.error ? "text-red-600" : "text-emerald-600"}`}
-              >
-                {message}
-              </p>
-            )}
-            <button
-              disabled={busy || verificationCode.length !== 6}
-              onClick={verifyCode}
-              className="mt-6 h-12 w-full rounded-xl bg-red-600 text-sm font-semibold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 disabled:opacity-60"
+          )}
+          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
+            Email address
+            <input
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal outline-none focus:ring-2 focus:ring-red-500"
+              placeholder="you@example.com"
+              type="email"
+            />
+          </label>
+          {!resetMode && (
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
+              Password
+              <input
+                required
+                minLength={6}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal outline-none focus:ring-2 focus:ring-red-500"
+                placeholder="Password"
+                type="password"
+              />
+            </label>
+          )}
+          {message && (
+            <p
+              className={`text-xs ${auth.error ? "text-red-600" : "text-emerald-600"}`}
             >
-              {busy ? "Verifying..." : "Verify Email"}
-            </button>
+              {message}
+            </p>
+          )}
+          <button
+            disabled={busy || !auth.firebaseConfigured}
+            className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy
+              ? "Please wait..."
+              : resetMode
+                ? "Send reset link"
+                : mode === "register"
+                  ? "Register & Start"
+                  : "Access Workspace"}
+            <span className="ml-2">→</span>
+          </button>
+        </form>
+        <div className="mt-5 flex flex-wrap justify-between gap-3 text-xs">
+          {!resetMode && mode === "login" && (
             <button
-              disabled={busy || resendSeconds > 0}
-              onClick={resend}
-              className="mt-4 text-xs font-semibold text-red-600 disabled:text-slate-400"
+              onClick={() => {
+                auth.clearError();
+                setResetMode(true);
+              }}
+              className="font-semibold text-red-600"
             >
-              {resendSeconds > 0
-                ? `Resend Code (${resendSeconds}s)`
-                : "Resend Code"}
+              Forgot password?
             </button>
-            <p className="mt-6 text-xs text-slate-500">
-              Wrong email?{" "}
-              <button
-                onClick={() => setVerification(false)}
+          )}
+          {resetMode && (
+            <button
+              onClick={() => {
+                auth.clearError();
+                setResetMode(false);
+              }}
+              className="font-semibold text-red-600"
+            >
+              Back to sign in
+            </button>
+          )}
+          {!resetMode && (
+            <span className="text-slate-500">
+              {mode === "login" ? "New here?" : "Already registered?"}{" "}
+              <a
+                href={mode === "login" ? "/register" : "/login"}
                 className="font-semibold text-red-600"
               >
-                Go back
-              </button>
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="mb-6 flex rounded-xl bg-slate-100 p-1">
-              <a
-                href="/login"
-                className={`flex-1 rounded-lg py-2 text-center text-sm font-semibold ${mode === "login" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}
-              >
-                Sign In
+                {mode === "login" ? "Create account" : "Sign in"}
               </a>
-              <a
-                href="/register"
-                className={`flex-1 rounded-lg py-2 text-center text-sm font-semibold ${mode === "register" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}
-              >
-                Register
-              </a>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
-            <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
-            {!resetMode && (
-              <div className="mt-6 grid grid-cols-2 gap-3">
-                <button
-                  disabled={busy}
-                  onClick={() => social("google")}
-                  className="h-11 rounded-xl border border-slate-200 text-xs font-semibold hover:bg-slate-50"
-                >
-                  G Google
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() => social("facebook")}
-                  className="h-11 rounded-xl border border-slate-200 text-xs font-semibold hover:bg-slate-50"
-                >
-                  f Facebook
-                </button>
-              </div>
-            )}
-            {!resetMode && (
-              <div className="my-5 flex items-center gap-3 text-[10px] uppercase tracking-wider text-slate-400">
-                <i className="h-px flex-1 bg-slate-200" />
-                or email
-                <i className="h-px flex-1 bg-slate-200" />
-              </div>
-            )}
-            <form onSubmit={submit} className="space-y-4">
-              {mode === "register" && !resetMode && (
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                  Full name
-                  <input
-                    required
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal outline-none focus:ring-2 focus:ring-red-500"
-                    placeholder="Alex Morgan"
-                  />
-                </label>
-              )}
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                Email address
-                <input
-                  required
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal outline-none focus:ring-2 focus:ring-red-500"
-                  placeholder="you@example.com"
-                  type="email"
-                />
-              </label>
-              {!resetMode && (
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                  Password
-                  <input
-                    required
-                    minLength={6}
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal outline-none focus:ring-2 focus:ring-red-500"
-                    placeholder="Password"
-                    type="password"
-                  />
-                </label>
-              )}
-              {message && (
-                <p
-                  className={`text-xs ${auth.error ? "text-red-600" : "text-emerald-600"}`}
-                >
-                  {message}
-                </p>
-              )}
-              <button
-                disabled={busy || !auth.firebaseConfigured}
-                className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {busy
-                  ? "Please wait..."
-                  : resetMode
-                    ? "Send reset link"
-                    : mode === "register"
-                      ? "Register & Start"
-                      : "Access Workspace"}
-                <span className="ml-2">→</span>
-              </button>
-            </form>
-            <div className="mt-5 flex flex-wrap justify-between gap-3 text-xs">
-              {!resetMode && mode === "login" && (
-                <button
-                  onClick={() => {
-                    auth.clearError();
-                    setResetMode(true);
-                  }}
-                  className="font-semibold text-red-600"
-                >
-                  Forgot password?
-                </button>
-              )}
-              {resetMode && (
-                <button
-                  onClick={() => {
-                    auth.clearError();
-                    setResetMode(false);
-                  }}
-                  className="font-semibold text-red-600"
-                >
-                  Back to sign in
-                </button>
-              )}
-              {!resetMode && (
-                <span className="text-slate-500">
-                  {mode === "login" ? "New here?" : "Already registered?"}{" "}
-                  <a
-                    href={mode === "login" ? "/register" : "/login"}
-                    className="font-semibold text-red-600"
-                  >
-                    {mode === "login" ? "Create account" : "Sign in"}
-                  </a>
-                </span>
-              )}
-            </div>
-          </>
-        )}
+            </span>
+          )}
+        </div>
         <p className="mt-6 text-center text-[10px] text-slate-400">
           Secure authentication powered by Firebase.
         </p>

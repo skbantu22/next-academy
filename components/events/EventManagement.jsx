@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { CalendarDays, Eye, EyeOff, MapPin, Pencil, Search, Trash2, UserRound, Users } from "lucide-react";
 import { ChartCard, EmptyChartState } from "../dashboard/overview/ChartCard";
@@ -10,7 +12,35 @@ import EventForm from "./EventForm";
 import DataTable, { StatusBadge as TableBadge } from "../data-table/DataTable";
 import { createEvent, deleteEvent, loadEvents, setEventPublished, updateEvent, uploadEventBanner } from "../../lib/services/event-service";
 import { subscribeAllEvents } from "../../lib/admin-events-data";
+import { subscribePublishedEvents } from "../../lib/events-client";
 import { computeEventStatus, FILTER_STATUSES } from "../../lib/events-shared";
+import { useAuth } from "../../lib/auth-context";
+import { db } from "../../lib/firebase";
+
+// Same aggregate shape app/api/admin/events/route.js's buildStats() computes
+// server-side for Director/Admin — mirrored here so Teacher/Student (who
+// can't call that Admin-only API) still get real stat cards, computed from
+// exactly the events their own role is actually allowed to see.
+function buildStatsFromRows(rows) {
+  const stats = { total: rows.length, upcoming: 0, ongoing: 0, completed: 0, cancelled: 0, totalParticipants: 0 };
+  const byMonth = new Map();
+  const byType = new Map();
+  rows.forEach((row) => {
+    if (row.computedStatus === "Upcoming") stats.upcoming += 1;
+    else if (row.computedStatus === "Ongoing") stats.ongoing += 1;
+    else if (row.computedStatus === "Completed") stats.completed += 1;
+    else if (row.computedStatus === "Cancelled") stats.cancelled += 1;
+    stats.totalParticipants += row.participantCount || 0;
+    const month = (row.eventDate || "").slice(0, 7);
+    if (month) byMonth.set(month, (byMonth.get(month) || 0) + 1);
+    if (row.type) byType.set(row.type, (byType.get(row.type) || 0) + 1);
+  });
+  return {
+    ...stats,
+    byMonth: [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, count]) => ({ month, count })),
+    byType: [...byType.entries()].map(([type, count]) => ({ type, count })),
+  };
+}
 
 const CHART_COLORS = ["#FF2D2D", "#F59E0B", "#22C55E", "#3B82F6", "#A855F7", "#14B8A6", "#EC4899", "#98A2B3"];
 const statusTones = {
@@ -42,7 +72,7 @@ function EventThumbnail({ event }) {
   );
 }
 
-function EventCard({ event, onEdit, onTogglePublish, onDelete }) {
+function EventCard({ event, onEdit, onTogglePublish, onDelete, canManage }) {
   const timeLabel = event.startTime ? `${event.startTime}${event.endTime ? `–${event.endTime}` : ""}` : null;
   return (
     <article className="flex flex-col overflow-hidden rounded-2xl border border-border-subtle bg-white shadow-sm transition hover:shadow-md">
@@ -73,17 +103,19 @@ function EventCard({ event, onEdit, onTogglePublish, onDelete }) {
         </div>
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-border-subtle pt-3">
           <Link href={`/dashboard/events/${event.id}`} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-hover">View</Link>
-          <div className="flex items-center gap-0.5">
-            <button type="button" title="Edit" aria-label="Edit event" onClick={() => onEdit(event)} className="rounded-lg p-1.5 text-muted hover:bg-active hover:text-primary">
-              <Pencil className="h-4 w-4" aria-hidden="true" />
-            </button>
-            <button type="button" title={event.published ? "Unpublish" : "Publish"} aria-label={event.published ? "Unpublish event" : "Publish event"} onClick={() => onTogglePublish(event)} className="rounded-lg p-1.5 text-muted hover:bg-active hover:text-info">
-              {event.published ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
-            </button>
-            <button type="button" title="Delete" aria-label="Delete event" onClick={() => onDelete(event)} className="rounded-lg p-1.5 text-muted hover:bg-active hover:text-primary">
-              <Trash2 className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
+          {canManage && (
+            <div className="flex items-center gap-0.5">
+              <button type="button" title="Edit" aria-label="Edit event" onClick={() => onEdit(event)} className="rounded-lg p-1.5 text-muted hover:bg-active hover:text-primary">
+                <Pencil className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <button type="button" title={event.published ? "Unpublish" : "Publish"} aria-label={event.published ? "Unpublish event" : "Publish event"} onClick={() => onTogglePublish(event)} className="rounded-lg p-1.5 text-muted hover:bg-active hover:text-info">
+                {event.published ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+              </button>
+              <button type="button" title="Delete" aria-label="Delete event" onClick={() => onDelete(event)} className="rounded-lg p-1.5 text-muted hover:bg-active hover:text-primary">
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </article>
@@ -103,7 +135,35 @@ function Dialog({ title, children, onClose }) {
 const monthLabel = (key) => { const [y, m] = key.split("-").map(Number); return new Date(y, m - 1, 1).toLocaleString("en-US", { month: "short", year: "numeric" }); };
 const blankForm = { name: "", type: "", description: "", eventDate: "", startTime: "", endTime: "", location: "", organizer: "", organizerId: "", maxParticipants: "", targetAudience: [], registrationRequired: false, registrationDeadline: "", status: "", published: false };
 
+// One shared "Event Organization" page for Director/Admin, Teacher, and
+// Student/Volunteer/Facilitator. Structure, cards, colors, and Table/List/
+// Calendar are IDENTICAL for every role (same component, same classes) —
+// only which sections render, and which data source feeds them, changes:
+//
+//   Director/Admin — unchanged from before this task: loadEvents()'s
+//     Admin-only API (app/api/admin/events, requireManager-gated) for
+//     every event (draft + published) and its server-computed stats, plus
+//     the live subscribeAllEvents() overlay. Full management (Add/Edit/
+//     Publish/Delete) and both charts.
+//   Teacher — can never call the Admin-only API (the server would 403 it
+//     regardless of anything the UI does — see requireManager in
+//     app/api/admin/events/route.js), so it reads the exact same two
+//     client-side Firestore queries the pre-existing Student/organizer
+//     views already used: published events (subscribePublishedEvents) plus
+//     any event they organize (academyEvents where organizerId == uid,
+//     the same query TeacherOrganizerEvents.jsx already ran) — allowed by
+//     the existing academyEvents security rule as-is, no rule change.
+//     Stats cards, no charts, no Add/Edit/Publish/Delete.
+//   Student/Volunteer/Facilitator/other — published events only (same
+//     query as before), a smaller stat-card set, no charts, no management.
 export default function EventManagement() {
+  const router = useRouter();
+  const { profile, user } = useAuth();
+  const role = profile?.role;
+  const isDirector = role === "Director" || role === "Admin";
+  const isTeacher = role === "Teacher";
+  const canManage = isDirector;
+
   const [data, setData] = useState({ events: [], stats: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -121,6 +181,7 @@ export default function EventManagement() {
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const load = useCallback(async () => {
+    if (!isDirector) return;
     setLoading(true);
     try {
       const result = await loadEvents();
@@ -132,7 +193,7 @@ export default function EventManagement() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isDirector]);
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
   useEffect(() => {
     if (!notice) return undefined;
@@ -140,16 +201,17 @@ export default function EventManagement() {
     return () => clearTimeout(timer);
   }, [notice]);
 
-  // Live event list — real-time via Firestore's own onSnapshot listener on
-  // the same academyEvents collection (no separate data source), so a
-  // create/edit/publish/delete from any tab or another admin's session
-  // updates every card here immediately with no manual refresh. The stats
-  // cards/charts above still come from loadEvents()'s server-computed
-  // aggregates (unaffected by this — see the `load()` call after each
-  // mutation below), since that math isn't part of what this task changed.
+  // Live event list — real-time via Firestore's own onSnapshot, so a
+  // create/edit/publish/delete updates every tab immediately with no
+  // manual refresh. Director/Admin get every event (subscribeAllEvents,
+  // unchanged); everyone else gets only what their role may actually see.
   const [liveEvents, setLiveEvents] = useState([]);
   const [liveLoading, setLiveLoading] = useState(true);
+  const [publishedRows, setPublishedRows] = useState([]);
+  const [organizedRows, setOrganizedRows] = useState([]);
+
   useEffect(() => {
+    if (!isDirector) return undefined;
     return subscribeAllEvents(
       (rows) => {
         setLiveEvents(rows.map((event) => ({ ...event, computedStatus: computeEventStatus(event) })));
@@ -157,15 +219,52 @@ export default function EventManagement() {
       },
       () => setLiveLoading(false),
     );
-  }, []);
+  }, [isDirector]);
 
-  const events = useMemo(() => liveEvents
+  useEffect(() => {
+    if (isDirector) return undefined;
+    return subscribePublishedEvents(
+      (rows) => {
+        setPublishedRows(rows.map((event) => ({ ...event, computedStatus: computeEventStatus(event) })));
+        setLiveLoading(false);
+      },
+      () => setLiveLoading(false),
+    );
+  }, [isDirector]);
+
+  useEffect(() => {
+    if (isDirector || !isTeacher || !db || !user?.uid) return undefined;
+    return onSnapshot(
+      query(collection(db, "academyEvents"), where("organizerId", "==", user.uid)),
+      (snapshot) => setOrganizedRows(snapshot.docs.map((item) => {
+        const event = { id: item.id, ...item.data() };
+        return { ...event, computedStatus: computeEventStatus(event) };
+      })),
+      () => {},
+    );
+  }, [isDirector, isTeacher, user?.uid]);
+
+  // Pure derivation, not an effect+setState — a non-Director's visible set
+  // is just "whatever their two allowed queries returned, deduped".
+  const mergedNonDirectorEvents = useMemo(() => {
+    const merged = new Map();
+    [...publishedRows, ...organizedRows].forEach((event) => merged.set(event.id, event));
+    return [...merged.values()];
+  }, [publishedRows, organizedRows]);
+  const visibleEvents = isDirector ? liveEvents : mergedNonDirectorEvents;
+
+  // Teacher/Student stat cards are a pure derivation of exactly what their
+  // own role can see (visibleEvents above) — never a separate, wider fetch.
+  const ownStats = useMemo(() => (isDirector ? null : buildStatsFromRows(visibleEvents)), [isDirector, visibleEvents]);
+  const statsLoading = isDirector ? loading : liveLoading;
+
+  const events = useMemo(() => visibleEvents
     .filter((event) =>
       (filter === "All" || event.computedStatus === filter) &&
       `${event.name} ${event.type} ${event.location} ${event.organizer}`.toLowerCase().includes(search.trim().toLowerCase()),
     )
     .sort((a, b) => (a.eventDate || "").localeCompare(b.eventDate || "") || (a.startTime || "").localeCompare(b.startTime || "")),
-  [liveEvents, search, filter]);
+  [visibleEvents, search, filter]);
 
   function selectBanner(file) {
     setBannerFile(file);
@@ -251,60 +350,70 @@ export default function EventManagement() {
     }
   }
 
-  const stats = data.stats;
+  const stats = isDirector ? data.stats : ownStats;
   const byMonth = (stats?.byMonth || []).map((row) => ({ month: monthLabel(row.month), count: row.count }));
   const byType = stats?.byType || [];
+  // Director/Admin & Teacher get the full 5-card set; a browsing role
+  // (Student/Volunteer/Facilitator) only gets Upcoming/Ongoing/Completed —
+  // "Total Events" and "Total Participants" are academy-wide admin metrics
+  // per the role spec, not something a browsing student needs on their own
+  // events list.
+  const statCards = isDirector || isTeacher
+    ? [["Total Events", stats?.total], ["Upcoming", stats?.upcoming], ["Ongoing", stats?.ongoing], ["Completed", stats?.completed], ["Total Participants", stats?.totalParticipants]]
+    : [["Upcoming", stats?.upcoming], ["Ongoing", stats?.ongoing], ["Completed", stats?.completed]];
 
   return (
     <div className="space-y-6">
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-[#f3aaaa] bg-[linear-gradient(120deg,#fff0f0_0%,#fff7f7_45%,#ffffff_100%)] p-6 text-ink shadow-xl">
-        <div><h2 className="text-3xl font-black">Events</h2><p className="mt-2 text-sm text-muted">Create, publish, and manage academy-wide events, workshops, and activities.</p></div>
-        <button type="button" onClick={() => open(null)} className="rounded-xl bg-primary px-4 py-3 text-xs font-bold text-white">Add Event</button>
+        <div><h2 className="text-3xl font-black">Events</h2><p className="mt-2 text-sm text-muted">{canManage ? "Create, publish, and manage academy-wide events, workshops, and activities." : "Browse academy events, workshops, and activities."}</p></div>
+        {canManage && <button type="button" onClick={() => open(null)} className="rounded-xl bg-primary px-4 py-3 text-xs font-bold text-white">Add Event</button>}
       </section>
 
       {notice && <p className="rounded-xl bg-success-soft p-4 text-sm text-success">{notice}</p>}
       {error && <p className="rounded-xl bg-active p-4 text-sm text-primary">{error}</p>}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {[["Total Events", stats?.total], ["Upcoming", stats?.upcoming], ["Ongoing", stats?.ongoing], ["Completed", stats?.completed], ["Total Participants", stats?.totalParticipants]].map(([label, value]) => (
+      <section className={`grid gap-4 sm:grid-cols-2 ${statCards.length > 3 ? "xl:grid-cols-5" : "xl:grid-cols-3"}`}>
+        {statCards.map(([label, value]) => (
           <article key={label} className="rounded-2xl border border-border-subtle bg-white p-5 shadow-sm">
             <p className="text-[10px] font-bold uppercase tracking-wider text-subtle">{label}</p>
-            <p className="mt-2 text-2xl font-extrabold text-ink">{loading ? "—" : (value ?? 0)}</p>
+            <p className="mt-2 text-2xl font-extrabold text-ink">{statsLoading ? "—" : (value ?? 0)}</p>
           </article>
         ))}
       </section>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ChartCard title="Events by Month" subtitle="Scheduled events across the year" icon={CalendarDays}>
-          {loading ? <EmptyChartState message="Loading..." /> : byMonth.length ? (
-            <div className="h-70 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={byMonth} margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#667085" }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#667085" }} />
-                  <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e7e5e4", fontSize: 12 }} />
-                  <Bar dataKey="count" name="Events" fill="#FF2D2D" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : <EmptyChartState message="No events yet" />}
-        </ChartCard>
-        <ChartCard title="Events by Type" subtitle="Breakdown across categories" icon={Users}>
-          {loading ? <EmptyChartState message="Loading..." /> : byType.length ? (
-            <div className="h-70 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={byType} dataKey="count" nameKey="type" innerRadius="50%" outerRadius="80%" paddingAngle={2}>
-                    {byType.map((entry, index) => <Cell key={entry.type} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e7e5e4", fontSize: 12 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          ) : <EmptyChartState message="No events yet" />}
-        </ChartCard>
-      </div>
+      {isDirector && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <ChartCard title="Events by Month" subtitle="Scheduled events across the year" icon={CalendarDays}>
+            {loading ? <EmptyChartState message="Loading..." /> : byMonth.length ? (
+              <div className="h-70 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={byMonth} margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#667085" }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#667085" }} />
+                    <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e7e5e4", fontSize: 12 }} />
+                    <Bar dataKey="count" name="Events" fill="#FF2D2D" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : <EmptyChartState message="No events yet" />}
+          </ChartCard>
+          <ChartCard title="Events by Type" subtitle="Breakdown across categories" icon={Users}>
+            {loading ? <EmptyChartState message="Loading..." /> : byType.length ? (
+              <div className="h-70 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={byType} dataKey="count" nameKey="type" innerRadius="50%" outerRadius="80%" paddingAngle={2}>
+                      {byType.map((entry, index) => <Cell key={entry.type} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e7e5e4", fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : <EmptyChartState message="No events yet" />}
+          </ChartCard>
+        </div>
+      )}
 
       <div className="flex gap-2">
         {["Table", "List", "Calendar"].map((item) => (
@@ -325,7 +434,12 @@ export default function EventManagement() {
               { key: "participantCount", header: "Registered", align: "right", sortable: true, accessor: (e) => e.participantCount ?? 0, render: (e) => `${e.participantCount ?? 0}${e.maxParticipants != null ? ` / ${e.maxParticipants}` : ""}`, exportValue: (e) => e.participantCount ?? 0 },
               { key: "organizer", header: "Organizer", sortable: true, accessor: (e) => e.organizer || "" },
               { key: "computedStatus", header: "Status", sortable: true, filter: {}, accessor: (e) => e.computedStatus || "", render: (e) => <TableBadge tone={{ Upcoming: "blue", Ongoing: "green", Completed: "gray", Cancelled: "red", Draft: "orange" }[e.computedStatus] || "gray"}>{e.computedStatus}</TableBadge> },
-              { key: "published", header: "Published", sortable: true, filter: {}, accessor: (e) => (e.published ? "Published" : "Draft") },
+              // A non-manager's own event list is published-only by
+              // construction (see the data-loading effects above), so a
+              // "Published" column would read "Published" on every single
+              // row — real information only for Director/Admin, who can
+              // also see drafts.
+              ...(canManage ? [{ key: "published", header: "Published", sortable: true, filter: {}, accessor: (e) => (e.published ? "Published" : "Draft") }] : []),
             ]}
             rows={events}
             loading={liveLoading}
@@ -335,16 +449,25 @@ export default function EventManagement() {
             rowActions={(event) => (
               <>
                 <Link href={`/dashboard/events/${event.id}`} className="rounded-lg bg-info px-2.5 py-1.5 text-[11px] font-bold text-white hover:opacity-90">View</Link>
-                <button type="button" onClick={() => open(event)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-ink hover:bg-page">Edit</button>
-                <button type="button" onClick={() => togglePublish(event)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-info hover:bg-page">{event.published ? "Unpublish" : "Publish"}</button>
-                <button type="button" onClick={() => setConfirmDelete(event)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-primary hover:bg-page">Delete</button>
+                {canManage && (
+                  <>
+                    <button type="button" onClick={() => open(event)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-ink hover:bg-page">Edit</button>
+                    <button type="button" onClick={() => togglePublish(event)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-info hover:bg-page">{event.published ? "Unpublish" : "Publish"}</button>
+                    <button type="button" onClick={() => setConfirmDelete(event)} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-primary hover:bg-page">Delete</button>
+                  </>
+                )}
               </>
             )}
           />
         </section>
       ) : tab === "Calendar" ? (
         <section className="rounded-3xl border border-border-subtle bg-white p-5 shadow-sm md:p-6">
-          <EventCalendar events={events} onSelectEvent={(event) => open(event)} />
+          {/* Director/Admin clicking a calendar event opens the inline
+              edit dialog (fast management workflow, unchanged). Teacher/
+              Student have no edit rights, so their click instead opens the
+              same read-only event detail page the Table/List "View" link
+              and Add-Event dialog both already use. */}
+          <EventCalendar events={events} onSelectEvent={(event) => (canManage ? open(event) : router.push(`/dashboard/events/${event.id}`))} />
         </section>
       ) : (
         <section className="rounded-3xl border border-border-subtle bg-white p-5 shadow-sm md:p-6">
@@ -363,22 +486,22 @@ export default function EventManagement() {
           ) : events.length ? (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {events.map((event) => (
-                <EventCard key={event.id} event={event} onEdit={open} onTogglePublish={togglePublish} onDelete={setConfirmDelete} />
+                <EventCard key={event.id} event={event} onEdit={open} onTogglePublish={togglePublish} onDelete={setConfirmDelete} canManage={canManage} />
               ))}
             </div>
           ) : (
-            <p className="py-10 text-center text-sm text-muted">{search || filter !== "All" ? "No events match your search." : "No events found. Click \"Add Event\" to create the first one."}</p>
+            <p className="py-10 text-center text-sm text-muted">{search || filter !== "All" ? "No events match your search." : canManage ? "No events found. Click \"Add Event\" to create the first one." : "No events found."}</p>
           )}
         </section>
       )}
 
-      {(adding || editing) && (
+      {canManage && (adding || editing) && (
         <Dialog title={editing ? "Edit Event" : "Add Event"} onClose={closeForm}>
           <EventForm form={form} setForm={setForm} saving={saving} error={formError} onCancel={closeForm} onSubmit={submit} bannerPreview={bannerPreview || form.bannerUrl} onBannerSelect={selectBanner} onBannerRemove={removeBanner} />
         </Dialog>
       )}
 
-      {confirmDelete && (
+      {canManage && confirmDelete && (
         <Dialog title="Delete Event" onClose={() => setConfirmDelete(null)}>
           <p className="text-sm text-muted">Delete <b>{confirmDelete.name}</b>? This will permanently remove the event and all of its participant records. This cannot be undone.</p>
           <div className="mt-5 flex justify-end gap-3">

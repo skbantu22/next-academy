@@ -28,6 +28,7 @@ import Shop from "../../../components/shop/Shop";
 import AchievementManagement from "../../../components/achievement/AchievementManagement";
 import StudentAchievements from "../../../components/achievement/StudentAchievements";
 import StudentAttendance from "../../../components/students/StudentAttendance";
+import StudentExams from "../../../components/exams/StudentExams";
 import QrAttendanceScanner from "../../../components/students/QrAttendanceScanner";
 import StudentDashboardHome from "../../../components/students/StudentDashboardHome";
 import AdminQrScanner from "../../../components/attendance/AdminQrScanner";
@@ -45,10 +46,12 @@ export const roleConfig = {
       "Documents",
       "Achievements",
       "Certificates",
+      "Exam Test",
       "My Shop",
       "ID Card",
       "Chat",
       "QR Scanner",
+      "Settings",
     ],
   },
   Volunteer: {
@@ -61,6 +64,7 @@ export const roleConfig = {
       "Achievements",
       "ID Card",
       "Chat",
+      "Settings",
     ],
     stats: [
       ["Students supported", "24", "this month", "â™™"],
@@ -80,6 +84,7 @@ export const roleConfig = {
       "Documents",
       "Certificates",
       "Chat",
+      "Settings",
     ],
     stats: [
       ["Active cohorts", "06", "in progress", "â–¦"],
@@ -100,6 +105,7 @@ export const roleConfig = {
       "Achievements",
       "Certificates",
       "Chat",
+      "Settings",
     ],
     stats: [],
   },
@@ -122,6 +128,7 @@ export const roleConfig = {
       "Achievement",
       "ID Card",
       "Scan QR Code",
+      "Settings",
     ],
     stats: [],
   },
@@ -143,6 +150,7 @@ export const roleConfig = {
       "Achievement",
       "ID Card",
       "Scan QR Code",
+      "Settings",
     ],
     stats: [
       ["Total users", "684", "â†‘ 32 this month", "â™™"],
@@ -195,6 +203,7 @@ function DirectorDashboard({ profile, user }) {
       onNavigate={setActive}
       name={name}
       initials={initials}
+      photoURL={profile?.photoURL}
       userEmail={user.email}
       headerTitle={active === "Dashboard" ? "Director Dashboard" : active}
       headerSubtitle="Organization overview"
@@ -319,6 +328,7 @@ function DashboardContent({ role, profile, user }) {
       onNavigate={selectModule}
       name={name}
       initials={initials}
+      photoURL={profile?.photoURL}
       userEmail={user.email}
       headerTitle={active === "Dashboard" ? `${role} Dashboard` : active}
       onLogout={logout}
@@ -354,6 +364,8 @@ function DashboardContent({ role, profile, user }) {
               <AdminQrScanner />
             ) : (active === "Achievements" || active === "Certificates") ? (
               <StudentAchievements uid={user.uid} />
+            ) : active === "Exam Test" ? (
+              <StudentExams uid={user.uid} />
             ) : role === "Student" && active === "Attendance" ? (
               <StudentAttendance />
             ) : role === "Student" && active === "QR Scanner" ? (

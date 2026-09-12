@@ -5,6 +5,7 @@ import Link from "next/link";
 import SidebarIcon, { navLabel } from "./SidebarIcon";
 import ChatButton, { useUnreadConversationCount } from "./ChatButton";
 import NotificationBell from "./NotificationBell";
+import GlobalSearch from "./GlobalSearch";
 
 function Brand() {
   return (
@@ -38,6 +39,7 @@ export default function AdminShell({
   onNavigate,
   name,
   initials,
+  photoURL,
   userEmail,
   headerTitle,
   onLogout,
@@ -125,13 +127,7 @@ export default function AdminShell({
             <h1 className="text-lg font-bold text-ink md:text-xl">{headerTitle}</h1>
           </div>
           <div className="flex items-center gap-3">
-            <div className="relative hidden sm:block">
-              <input
-                className="w-52 rounded-xl border border-border-subtle bg-page px-4 py-2 pl-9 text-xs outline-none focus:ring-2 focus:ring-primary"
-                placeholder="Search records, students..."
-              />
-              <span className="absolute left-3 top-2.5 text-subtle">⌕</span>
-            </div>
+            <GlobalSearch role={role} modules={modules} onNavigate={go} />
             <ChatButton href={chatHref} onClick={() => go("Chat")} />
             <button
               onClick={() => go("Settings")}
@@ -139,9 +135,14 @@ export default function AdminShell({
               aria-label="Open settings"
               title={userEmail}
             >
-              <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-primary bg-active text-xs font-bold text-primary">
-                {initials}
-              </span>
+              {photoURL ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={photoURL} alt="" className="h-8 w-8 rounded-full border-2 border-primary object-cover" />
+              ) : (
+                <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-primary bg-active text-xs font-bold text-primary">
+                  {initials}
+                </span>
+              )}
               <span className="hidden text-left sm:block">
                 <b className="block text-xs text-ink">{name}</b>
               </span>

@@ -338,18 +338,24 @@ export default function EventDetailsPage() {
 
   const tabs = ["Overview", ...(canManage || isOrganizerTeacher ? ["Participants", "Attendance"] : [])];
 
-  // Admin/Director's dashboard tab (e.g. "Event") lives only in that page's
-  // own React state, not the URL — so navigating to the bare dashboard URL
-  // always lands back on its default "Dashboard" tab, which read as an
-  // unwanted reset. `?tab=Event` (read by app/dashboard/[role]/page.jsx on
-  // mount) makes the destination itself encode "come back to the Events
-  // tab", so this works the same whether it's a fresh push or a browser
-  // back — no reliance on history state. Teacher has a real dedicated
-  // route for this instead of a tab, so it needs no query param.
+  // The dashboard tab lives only in that page's own React state, not the
+  // URL — so navigating to the bare dashboard URL always lands back on its
+  // default "Dashboard" tab, which read as an unwanted reset. `?tab=...`
+  // (read by app/dashboard/[role]/page.jsx on mount) makes the destination
+  // itself encode "come back to the Events tab", so this works the same
+  // whether it's a fresh push or a browser back — no reliance on history
+  // state. Teacher has a real dedicated route for this instead of a tab, so
+  // it needs no query param. The tab's actual NAME differs by role — it's
+  // "Event" (singular) only for Admin/Director; every other role's sidebar
+  // calls it "Events" (plural, see roleConfig in app/dashboard/[role]/page)
+  // — using the wrong name silently fails the `config.modules.includes()`
+  // check there and falls back to "Dashboard" instead of Events.
   const backHref =
     profile?.role === "Teacher"
       ? "/teacher/events"
-      : `/dashboard/${(profile?.role || "admin").toLowerCase()}?tab=Event`;
+      : canManage
+        ? `/dashboard/${(profile?.role || "admin").toLowerCase()}?tab=Event`
+        : `/dashboard/${(profile?.role || "student").toLowerCase()}?tab=Events`;
 
   function goBack() {
     router.push(backHref);

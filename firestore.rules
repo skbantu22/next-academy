@@ -154,6 +154,34 @@ service cloud.firestore {
     match /achievements/{achievementId} { allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid); allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && assignedStudent(request.resource.data.studentId)); allow update, delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId); }
     match /assessments/{assessmentId} { allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid); allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && assignedStudent(request.resource.data.studentId)); allow update, delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId); }
     match /certificates/{certificateId} { allow read: if admin() || (teacher() && resource.data.teacherId == request.auth.uid) || (signedIn() && resource.data.studentId == request.auth.uid); allow create: if admin() || (teacher() && request.resource.data.teacherId == request.auth.uid && assignedStudent(request.resource.data.studentId)); allow update, delete: if admin() || (teacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == resource.data.teacherId); }
+    // Quiz/Exam module. The quiz doc itself never carries correct answers
+    // (those live in the answerKey subcollection below, teacher/admin-only,
+    // never student-readable) — a Student may only read a quiz that is
+    // published and for a course they're enrolled in. Only the owning
+    // Teacher (or admin()) may write a quiz or its answer key.
+    match /quizzes/{quizId} {
+      allow read: if admin() || ownsCourse(resource.data.courseId) || (resource.data.status == 'published' && enrolledInCourse(resource.data.courseId));
+      allow create: if admin() || (teacher() && ownsCourse(request.resource.data.courseId) && request.resource.data.teacherId == request.auth.uid);
+      allow update, delete: if admin() || ownsCourse(resource.data.courseId);
+      // `courseId` is denormalized onto the answerKey doc itself (never a
+      // cross-document get() of the sibling quiz doc) — both docs are
+      // written in the SAME batch when a quiz is created, and a security
+      // rule's get() only ever sees state committed BEFORE the batch, so a
+      // rule here that read the parent quiz doc would always see it as
+      // not-yet-existing and reject the whole batch.
+      match /answerKey/{keyId} {
+        allow read, delete: if admin() || ownsCourse(resource.data.courseId);
+        allow create, update: if admin() || (teacher() && ownsCourse(request.resource.data.courseId));
+      }
+    }
+    // Grading must never trust the client — a student attempt is only ever
+    // created/scored server-side (Admin SDK, see /api/exams/[quizId]/submit),
+    // which is why there is no client `create`/`update` allowance here at
+    // all, only read of one's own attempt (or the owning teacher's / admin's).
+    match /quizAttempts/{attemptId} {
+      allow read: if admin() || resource.data.studentId == request.auth.uid || (teacher() && resource.data.teacherId == request.auth.uid);
+      allow write: if admin();
+    }
     match /conversations/{conversationId} {
       // `resource == null` (the doc doesn't exist yet) must be allowed here —
       // starting a new conversation does a client-side getDoc() first to
@@ -340,15 +368,4 @@ service cloud.firestore {
         && request.resource.data.date is string
         && request.resource.data.startTime is string
         && request.resource.data.endTime is string
-        && request.resource.data.startTime < request.resource.data.endTime
-        && request.resource.data.status == 'scheduled';
-      allow update: if admin()
-        && request.resource.data.createdBy == resource.data.createdBy
-        && request.resource.data.roomId is string
-        && request.resource.data.status in ['scheduled', 'cancelled']
-        && request.resource.data.startTime < request.resource.data.endTime;
-      allow delete: if admin();
-    }
-    match /{document=**} { allow read, write: if false; }
-  }
-}
+        && request.resource.data.startTime < requ

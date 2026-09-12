@@ -38,6 +38,7 @@ export default function WorkspaceShell({
   renderBadge,
   name,
   initials,
+  photoURL,
   userEmail,
   headerTitle,
   headerSubtitle,
@@ -132,9 +133,14 @@ export default function WorkspaceShell({
               aria-label="Open settings"
               title={userEmail}
             >
-              <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-primary bg-active text-xs font-bold text-primary">
-                {initials}
-              </span>
+              {photoURL ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={photoURL} alt="" className="h-8 w-8 rounded-full border-2 border-primary object-cover" />
+              ) : (
+                <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-primary bg-active text-xs font-bold text-primary">
+                  {initials}
+                </span>
+              )}
               <span className="hidden text-left sm:block">
                 <b className="block text-xs text-ink">{name}</b>
               </span>

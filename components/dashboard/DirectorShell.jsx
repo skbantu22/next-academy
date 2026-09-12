@@ -5,6 +5,7 @@ import Link from "next/link";
 import SidebarIcon, { navLabel } from "./SidebarIcon";
 import ChatButton from "./ChatButton";
 import NotificationBell from "./NotificationBell";
+import GlobalSearch from "./GlobalSearch";
 
 function Brand() {
   return (
@@ -37,6 +38,7 @@ export default function DirectorShell({
   onNavigate,
   name,
   initials,
+  photoURL,
   userEmail,
   headerTitle,
   headerSubtitle,
@@ -121,6 +123,7 @@ export default function DirectorShell({
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <GlobalSearch role="Director" modules={modules} onNavigate={onNavigate} />
             <ChatButton onClick={() => onNavigate?.("Chat")} />
             <button
               onClick={() => onNavigate?.("Settings")}
@@ -128,9 +131,14 @@ export default function DirectorShell({
               aria-label="Open settings"
               title={userEmail}
             >
-              <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-primary bg-active text-xs font-bold text-primary">
-                {initials}
-              </span>
+              {photoURL ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={photoURL} alt="" className="h-8 w-8 rounded-full border-2 border-primary object-cover" />
+              ) : (
+                <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-primary bg-active text-xs font-bold text-primary">
+                  {initials}
+                </span>
+              )}
               <span className="hidden text-left sm:block">
                 <b className="block text-xs text-ink">{name}</b>
               </span>

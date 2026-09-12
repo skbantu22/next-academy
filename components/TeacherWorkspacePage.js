@@ -36,9 +36,10 @@ import {
   subscribeTeacherPromotionLinks,
 } from "../lib/teacher-promote";
 import QRCode from "qrcode";
-import TeacherOrganizerEvents from "./events/TeacherOrganizerEvents";
+import EventManagement from "./events/EventManagement";
 import StudentEvents from "./events/StudentEvents";
 import Shop from "./shop/Shop";
+import TeacherExams from "./exams/TeacherExams";
 
 // Sidebar nav is intentionally a fixed 9-item list per product spec — do not
 // add Promote/Notifications/etc. here. Their pages still exist and remain
@@ -53,6 +54,7 @@ const links = [
   "Documents",
   "Chat",
   "Achievement",
+  "Exam Test",
   "ID Card",
   "Scan QR Code",
 ];
@@ -65,6 +67,7 @@ const paths = {
   Events: "/teacher/all-events",
   "My Shop": "/teacher/shop",
   Achievement: "/teacher/achievements",
+  "Exam Test": "/teacher/exams",
   Certificates: "/teacher/certificates",
   Chat: "/teacher/chat",
   Assignments: "/teacher/assignments",
@@ -145,6 +148,7 @@ export function TeacherShell({ active, children, unread }) {
       }
       name={name}
       initials={initials}
+      photoURL={profile?.photoURL}
       userEmail={user?.email}
       headerTitle={active === "Dashboard" ? "Teacher Dashboard" : active}
       headerSubtitle="Classroom overview"
@@ -482,7 +486,7 @@ function EventsView({ data, teacherId }) {
         ))}
       </div>
       {section === "Academy Events" ? (
-        <TeacherOrganizerEvents teacherId={teacherId} />
+        <EventManagement />
       ) : (
     <div className="grid gap-4 lg:grid-cols-[.75fr_1fr]">
       <Panel title={editing ? "Edit event" : "Create event"}>
@@ -836,7 +840,10 @@ function ProfileView({ user, profile }) {
 function PromotionLinkCard({ link, courseTitle, leads }) {
   const [qrImage, setQrImage] = useState("");
   const [copied, setCopied] = useState(false);
-  const url = typeof window !== "undefined" ? `${window.location.origin}/promote/${link.id}` : "";
+  const url =
+    typeof window !== "undefined"
+      ? `${process.env.NEXT_PUBLIC_BASE_URL || window.location.origin}/promote/${link.id}`
+      : "";
 
   useEffect(() => {
     if (!url) return;
@@ -1189,6 +1196,8 @@ export default function TeacherWorkspacePage({ module = "Dashboard" }) {
     <Shop role="Teacher" uid={user.uid} />
   ) : module === "Achievement" ? (
     <AchievementsView data={data} teacherId={user.uid} />
+  ) : module === "Exam Test" ? (
+    <TeacherExams teacherId={user.uid} />
   ) : module === "Certificates" ? (
     <CertificatesView data={data} teacherId={user.uid} />
   ) : module === "Assignments" ? (

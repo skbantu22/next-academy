@@ -4,10 +4,23 @@
 # they must be supplied explicitly because they're server-only credentials.
 #
 # Only variables with a real configured value are listed here. If you later
-# configure email OTP (EMAIL_OTP_HASH_SECRET), QR codes (QR_TOKEN_SECRET), or
-# Resend (RESEND_API_KEY / RESEND_FROM_EMAIL) in your local .env.local, add
-# matching entries here the same way before those features will work in prod.
+# configure Resend (RESEND_API_KEY / RESEND_FROM_EMAIL) in your local
+# .env.local, add matching entries here the same way before that feature
+# will work in prod. Email verification uses Firebase Authentication's own
+# built-in email-link system, which needs no app-side secret or env var
+# at all.
+#
+# To switch to a custom domain later: change NEXT_PUBLIC_BASE_URL's `value`
+# below to the new domain (e.g. "https://mydomain.com") and redeploy — no
+# application code changes needed. Also add that domain in Firebase Console
+# -> Authentication -> Settings -> Authorized domains (see README/report).
 env:
+  - variable: NEXT_PUBLIC_BASE_URL
+    value: "https://next-academy--mynextlerning.asia-southeast1.hosted.app"
+    availability:
+      - BUILD
+      - RUNTIME
+
   - variable: FIREBASE_ADMIN_PROJECT_ID
     value: "mynextlerning"
     availability:
@@ -20,5 +33,19 @@ env:
 
   - variable: FIREBASE_ADMIN_PRIVATE_KEY
     secret: FIREBASE_ADMIN_PRIVATE_KEY
+    availability:
+      - RUNTIME
+
+  # Required by lib/qr-token.js (signs/verifies every printed ID-card QR
+  # code) — /api/teacher/qr-token throws and returns 500 "Unable to issue a
+  # QR code" whenever this is missing, which is exactly why it was failing
+  # in production: this variable was never added here, so it only existed
+  # in local .env.local. Create the secret once with:
+  #   firebase apphosting:secrets:set QR_TOKEN_SECRET
+  # (paste the same value already used in your local .env.local, or a new
+  # 32+ character random string), then grant this backend access when
+  # prompted.
+  - variable: QR_TOKEN_SECRET
+    secret: QR_TOKEN_SECRET
     availability:
       - RUNTIME

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Eye, ShieldCheck } from "lucide-react";
-import { changeUserRole, loadUsers } from "../../lib/services/user-service";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Eye, MoreVertical, ShieldCheck, Trash2 } from "lucide-react";
+import { changeUserRole, deleteUserAccount, loadUsers } from "../../lib/services/user-service";
 import { useConfirm } from "../ui/ConfirmDialog";
+import { useToast } from "../ui/Toast";
 import DataTable, { StatusBadge } from "../data-table/DataTable";
 
 const assignableRoles = ["Student", "Teacher", "Admin", "Director"];
@@ -30,6 +31,42 @@ function displayDate(value) {
   return Number.isNaN(date.getTime()) ? dash : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
 }
 
+// The three-dot secondary-actions menu — currently just Delete, kept
+// behind a menu (rather than a third always-visible button) since it's the
+// one destructive, rarely-used action on this row.
+function RowMenu({ onDelete }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onClick(event) {
+      if (!ref.current?.contains(event.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative" onClick={(event) => event.stopPropagation()}>
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-label="More actions" className="rounded-lg p-1.5 text-muted hover:bg-page hover:text-ink">
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-8 z-20 w-44 rounded-xl border border-border-subtle bg-white p-1 shadow-2xl">
+          <button
+            type="button"
+            onClick={() => { setOpen(false); onDelete(); }}
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-semibold text-primary hover:bg-active"
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Delete account
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UserDetails({ user }) {
   const rows = [["User ID", user.userId || dash], ["Name", user.displayName], ["Email", user.email], ["Phone", user.phone], ["Role", user.role], ["Status", user.active === null ? null : user.active ? "Active" : "Inactive"], ["Joined", displayDate(user.createdAt)]];
   return <dl className="grid gap-4 text-sm">{rows.map(([label, value]) => <div key={label}><dt className="text-[10px] font-bold uppercase tracking-wider text-subtle">{label}</dt><dd className="mt-1 break-all font-medium text-muted">{value || dash}</dd></div>)}</dl>;
@@ -45,6 +82,7 @@ export default function UserManagement({ role, currentUserId }) {
   const [nextRole, setNextRole] = useState("");
   const [saving, setSaving] = useState(false);
   const confirm = useConfirm();
+  const toast = useToast();
 
   async function load() {
     setLoading(true);
@@ -74,6 +112,23 @@ export default function UserManagement({ role, currentUserId }) {
     { key: "status", header: "Status", sortable: true, filter: {}, accessor: (u) => (u.active === null ? "Unknown" : u.active ? "Active" : "Inactive"), render: (u) => <StatusBadge tone={u.active === false ? "gray" : "green"}>{u.active === null ? dash : u.active ? "Active" : "Inactive"}</StatusBadge> },
     { key: "createdAt", header: "Joined", sortable: true, sortValue: (u) => u.createdAt || "", exportValue: (u) => displayDate(u.createdAt), render: (u) => <span className="text-xs text-muted">{displayDate(u.createdAt)}</span> },
   ], []);
+
+  function deleteUser(user) {
+    const label = user.email || user.displayName || user.uid;
+    return confirm({
+      title: "Delete user account",
+      message: `This permanently deletes ${user.displayName || user.email || user.uid}'s sign-in and profile — they will no longer be able to sign in. Their historical records (enrollments, attendance, certificates, etc.) are kept, not deleted. This cannot be undone.`,
+      tone: "danger",
+      confirmLabel: "Delete permanently",
+      input: { label: `Type "${label}" to confirm`, placeholder: label },
+      onConfirm: async (typed) => {
+        if ((typed || "").trim() !== label) throw new Error(`Type "${label}" exactly to confirm deletion.`);
+        await deleteUserAccount(user.uid);
+        toast.success("User account deleted.");
+        await load();
+      },
+    });
+  }
 
   async function updateRole(event) {
     event.preventDefault();
@@ -120,6 +175,7 @@ export default function UserManagement({ role, currentUserId }) {
           <>
             <button type="button" onClick={() => setViewing(user)} className="inline-flex items-center gap-1 rounded-lg bg-info px-2.5 py-1.5 text-[11px] font-bold text-white hover:opacity-90"><Eye className="h-3.5 w-3.5" /> View</button>
             {canChange(user) && <button type="button" onClick={() => { setChanging(user); setNextRole(user.role); setError(""); }} className="rounded-lg border border-border-subtle px-2.5 py-1.5 text-[11px] font-bold text-primary hover:bg-page">Change role</button>}
+            {canChange(user) && <RowMenu onDelete={() => deleteUser(user)} />}
           </>
         )}
       />

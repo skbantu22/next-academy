@@ -1,0 +1,107 @@
+.rb-scroll::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.rb-scroll::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 4px;
+}
+.rb-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+.rb-scroll::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+.rb-matrix {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 1100px;
+}
+.rb-matrix th,
+.rb-matrix td {
+  border: 1px solid #cbd5e1;
+  text-align: center;
+  vertical-align: middle;
+  font-size: 0.75rem;
+  padding: 2px;
+}
+.rb-matrix th {
+  background-color: #ffffff;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.rb-matrix.density-compact th,
+.rb-matrix.density-compact td {
+  font-size: 0.7rem;
+  padding: 1px;
+}
+.rb-matrix.density-compact .rb-day-h {
+  min-width: 26px;
+  width: 26px;
+  max-width: 26px;
+}
+.rb-matrix.density-compact .rb-bar {
+  height: 1.35rem;
+  font-size: 0.68rem;
+  padding: 0 4px;
+}
+
+.rb-weekend {
+  background-color: #fef08a !important;
+}
+
+.rb-slot-morning {
+  background-color: #3b0764;
+  color: #ffffff;
+  font-weight: 600;
+}
+.rb-slot-afternoon {
+  background-color: #dc2626;
+  color: #ffffff;
+  font-weight: 600;
+}
+.rb-slot-evening {
+  background-color: #ea580c;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.rb-status-open {
+  color: #7e22ce;
+  font-weight: 700;
+}
+.rb-status-busy {
+  color: #dc2626;
+  font-weight: 700;
+}
+.rb-status-reserved {
+  color: #ea580c;
+  font-weight: 700;
+}
+
+.rb-bar {
+  border-radius: 9999px;
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 6px;
+  height: 1.4rem;
+  width: 100%;
+  border: 0;
+}
+.rb-bar:hover {
+  transform: translateY(-1px) scale(1.01);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+}
